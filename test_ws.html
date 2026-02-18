@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 主播直播间</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background-color: #f4f4f9; }
+        #chat-box { width: 100%; height: 300px; border: 1px solid #ccc; background: white; padding: 10px; overflow-y: auto; margin-bottom: 10px; border-radius: 8px; line-height: 1.6;}
+        .bot-msg { color: #e91e63; font-weight: bold; }
+        .user-msg { color: #2196f3; }
+        input { width: 70%; padding: 10px; border-radius: 4px; border: 1px solid #ccc;}
+        button { padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;}
+    </style>
+</head>
+<body>
+    <h2>🔴 AI 虚拟主播直播间 (WebSocket 测试)</h2>
+    <div id="chat-box"></div>
+    <input type="text" id="danmaku-input" placeholder="输入弹幕和主播互动吧..." onkeypress="if(event.key === 'Enter') sendDanmaku()">
+    <button onclick="sendDanmaku()">发送弹幕</button>
+
+    <script>
+        // 连接 FastAPI 的 WebSocket 服务
+        const ws = new WebSocket("ws://localhost:8000/ws/chat");
+        const chatBox = document.getElementById("chat-box");
+        let currentBotSpan = null; // 用于追踪当前主播正在输出的那句话的 DOM 节点
+
+        ws.onmessage = function(event) {
+            const msg = event.data;
+
+            // ⚠️ 新增：拦截音频数据并播放
+            if (msg.startsWith("[AUDIO:")) {
+                // 提取 Base64 字符串 (去掉 "[AUDIO:" 和结尾的 "]")
+                const base64Audio = msg.substring(7, msg.length - 1);
+                // 使用 HTML5 Audio API 播放 Base64 音频
+                const audio = new Audio("data:audio/mp3;base64," + base64Audio);
+                audio.play();
+                return; // 音频数据不需要显示在聊天框里
+            }
+
+            if (msg === "[EOF]") {
+                currentBotSpan = null;
+                chatBox.innerHTML += "<hr/>";
+            } else {
+                if (!currentBotSpan) {
+                    chatBox.innerHTML += `<span class="bot-msg">🌟 星瞳: </span>`;
+                    currentBotSpan = document.createElement("span");
+                    chatBox.appendChild(currentBotSpan);
+                }
+                currentBotSpan.innerHTML += msg;
+            }
+            chatBox.scrollTop = chatBox.scrollHeight;
+        };
+
+        function sendDanmaku() {
+            const input = document.getElementById("danmaku-input");
+            const text = input.value;
+            if (text) {
+                chatBox.innerHTML += `<div class="user-msg">💬 你: ${text}</div>`;
+                ws.send(text); // 通过 WebSocket 发送给后端
+                input.value = "";
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        }
+    </script>
+</body>
+</html>

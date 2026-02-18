@@ -1,0 +1,33 @@
+services:
+  ai-streamer:
+    # 1. 指定使用我们刚才构建好的本地镜像
+    image: ai-streamer:v1
+
+    build: .
+
+    # 2. 给容器起个固定的名字，方便后续查看
+    container_name: ai-streamer-container
+
+    # 3. 端口映射：宿主机 8000 -> 容器 8000
+    ports:
+      - "8000:8000"
+
+    # 4. 环境变量配置
+    environment:
+      # 在这里填入你的真实 Key，或者使用 ${GEMINI_API_KEY} 引用 .env 文件
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+      # 配置容器走宿主机的代理 (WSL2/Docker Desktop 专用魔法地址)
+      - http_proxy=http://host.docker.internal:33210
+      - https_proxy=http://host.docker.internal:33210
+
+    # 5. ⚠️ 关键配置：打通容器与宿主机的网络通道
+    # 这行配置能确保容器内能解析 host.docker.internal 从而连上你的代理
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # 6. 自动重启策略：挂了自动拉起
+    restart: always
+
+    volumes:
+      - ./data/knowledge.txt:/app/data/knowledge.txt
