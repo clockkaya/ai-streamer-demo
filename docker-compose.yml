@@ -1,7 +1,7 @@
 services:
   ai-streamer:
     # 1. 指定使用我们刚才构建好的本地镜像
-    image: ai-streamer:v1
+    image: ai-streamer:v1.1
 
     build: .
 

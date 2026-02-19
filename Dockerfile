@@ -1,23 +1,40 @@
-# 1. 采用 Python 3.12 的精简版官方镜像作为基础，大幅减小打包后的体积
+# ============================================================================
+#  Dockerfile — 生产镜像构建
+#
+#  引用关系:
+#    Dockerfile  ──构建──>  Docker 镜像
+#    docker-compose.yml  ──引用──>  Dockerfile (build: .)
+#    容器运行时  ──注入──>  .env 中的环境变量  ──>  app/core/config.py
+#
+#  设计原则:
+#    - 镜像本身不包含任何敏感信息（.env 被 .dockerignore 排除）
+#    - 镜像本身不包含知识库数据（通过 volume 挂载）
+#    - 端口和启动参数通过 ARG/ENV 参数化，避免硬编码
+# ============================================================================
+
+# 1. 基础镜像
 FROM python:3.12-slim
 
-# 2. 设置容器内的工作目录
+# 2. 工作目录
 WORKDIR /app
 
-# 3. 设置环境变量：防止 Python 生成 .pyc 文件，并强制控制台输出不带缓冲（方便看日志）
+# 3. Python 运行时优化
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# 4. 优化构建缓存：先单独复制 requirements.txt 并安装依赖
-# 这样只要依赖没变，每次改代码重新打包时，Docker 都会直接复用依赖层的缓存，极速秒级构建！
+# 4. 构建参数：可在 docker-compose.yml 或 docker build --build-arg 中覆盖
+ARG APP_PORT=8000
+ENV APP_PORT=${APP_PORT}
+
+# 5. 依赖安装（独立层，利用 Docker 构建缓存）
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. 把当前目录下的所有业务代码复制到容器的 /app 目录下
+# 6. 复制业务代码
 COPY . .
 
-# 6. 暴露 FastAPI 运行的 8000 端口
-EXPOSE 8000
+# 7. 暴露服务端口
+EXPOSE ${APP_PORT}
 
-# 7. 容器启动时执行的终极命令
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 8. 启动命令（读取 APP_PORT 环境变量）
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${APP_PORT}
