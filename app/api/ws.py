@@ -5,6 +5,7 @@ app.api.ws
 WebSocket 实时交互接口 —— 流式弹幕 + TTS 语音推送。
 
 提供 ``/ws/chat`` 端点，支持打字机式流式输出和音频实时推送。
+每个 WebSocket 连接会创建独立的 ``ChatSession``，对话上下文互不干扰。
 """
 from __future__ import annotations
 
@@ -25,9 +26,12 @@ router: APIRouter = APIRouter()
 async def websocket_chat_endpoint(websocket: WebSocket) -> None:
     """WebSocket 直播间聊天端点。
 
+    每次 WebSocket 连接建立时，创建独立的 ``ChatSession``，
+    确保不同用户的对话上下文互不干扰。
+
     连接后持续监听用户消息，每次收到弹幕后：
 
-    1. 通过 ChatService 流式获取 AI 回复并逐字推送
+    1. 通过 ChatSession 流式获取 AI 回复并逐字推送
     2. 整句回复完成后，调用 TTS 引擎生成语音
     3. 以 ``[AUDIO:base64]`` 格式推送音频
     4. 发送 ``[EOF]`` 结束标记
@@ -36,13 +40,18 @@ async def websocket_chat_endpoint(websocket: WebSocket) -> None:
         websocket: FastAPI WebSocket 连接对象。
     """
     await websocket.accept()
+
+    # 为本连接创建独立的聊天会话（独立 LLM 上下文）
+    session = chat_service.create_session()
+    logger.info("新观众进入直播间")
+
     try:
         while True:
             user_message: str = await websocket.receive_text()
 
             # 阶段 1: 流式回复 —— 逐字推送给前端，模拟打字机效果
             full_reply: str = ""
-            async for chunk in chat_service.handle_message_stream(user_message):
+            async for chunk in session.handle_message_stream(user_message):
                 full_reply += chunk
                 await websocket.send_text(chunk)
                 await asyncio.sleep(0.02)  # 控制打字速度
