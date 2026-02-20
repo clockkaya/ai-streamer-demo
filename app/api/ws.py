@@ -2,10 +2,9 @@
 app.api.ws
 ~~~~~~~~~~
 
-WebSocket 实时交互接口 —— 流式弹幕 + TTS 语音推送。
+WebSocket 实时交互接口 —— 直播间模式。
 
-提供 ``/ws/chat`` 端点，支持打字机式流式输出和音频实时推送。
-每个 WebSocket 连接会创建独立的 ``ChatSession``，对话上下文互不干扰。
+所有连接共享同一主播对话上下文，通过 ``ConnectionManager`` 广播弹幕和回复。
 """
 from __future__ import annotations
 
@@ -14,7 +13,7 @@ import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.core.logging import get_logger
-from app.services.chat_service import chat_service
+from app.services.chat_service import get_chat_service
 from app.tts.engine import generate_audio_base64
 
 logger = get_logger(__name__)
@@ -22,53 +21,83 @@ logger = get_logger(__name__)
 router: APIRouter = APIRouter()
 
 
+class ConnectionManager:
+    """WebSocket 连接管理器 —— 维护在线观众列表，提供广播能力。"""
+
+    def __init__(self) -> None:
+        self.active_connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket) -> None:
+        """接受新连接并加入在线列表。"""
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        logger.info("观众进入直播间 | 当前在线: %d", len(self.active_connections))
+
+    def disconnect(self, websocket: WebSocket) -> None:
+        """从在线列表移除断开的连接。"""
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+        logger.info("观众退出直播间 | 当前在线: %d", len(self.active_connections))
+
+    async def broadcast(self, message: str) -> None:
+        """向所有在线观众广播消息。"""
+        tasks = [ws.send_text(message) for ws in self.active_connections]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # 清理已断开的连接
+        for ws, result in zip(self.active_connections[:], results):
+            if isinstance(result, Exception):
+                logger.warning("广播失败，移除断开的连接")
+                self.active_connections.remove(ws)
+
+
+# 全局连接管理器
+manager = ConnectionManager()
+
+
 @router.websocket("/ws/chat")
 async def websocket_chat_endpoint(websocket: WebSocket) -> None:
     """WebSocket 直播间聊天端点。
 
-    每次 WebSocket 连接建立时，创建独立的 ``ChatSession``，
-    确保不同用户的对话上下文互不干扰。
+    所有连接共享同一主播对话上下文。弹幕和回复广播给所有在线观众。
 
-    连接后持续监听用户消息，每次收到弹幕后：
-
-    1. 通过 ChatSession 流式获取 AI 回复并逐字推送
-    2. 整句回复完成后，调用 TTS 引擎生成语音
-    3. 以 ``[AUDIO:base64]`` 格式推送音频
-    4. 发送 ``[EOF]`` 结束标记
-
-    Args:
-        websocket: FastAPI WebSocket 连接对象。
+    消息协议:
+      - ``[USER:消息内容]`` —— 广播观众弹幕
+      - 普通文本 —— 主播流式回复
+      - ``[AUDIO:base64]`` —— TTS 语音
+      - ``[EOF]`` —— 本轮对话结束标记
     """
-    await websocket.accept()
+    await manager.connect(websocket)
 
-    # 为本连接创建独立的聊天会话（独立 LLM 上下文）
-    session = chat_service.create_session()
-    logger.info("新观众进入直播间")
+    # 所有连接共享同一个直播间会话
+    session = get_chat_service().get_live_session()
 
     try:
         while True:
             user_message: str = await websocket.receive_text()
 
-            # 阶段 1: 流式回复 —— 逐字推送给前端，模拟打字机效果
+            # 阶段 1: 广播弹幕
+            await manager.broadcast(f"[USER:{user_message}]")
+
+            # 阶段 2: 流式回复，广播给所有人
             full_reply: str = ""
             async for chunk in session.handle_message_stream(user_message):
                 full_reply += chunk
-                await websocket.send_text(chunk)
-                await asyncio.sleep(0.02)  # 控制打字速度
+                await manager.broadcast(chunk)
+                await asyncio.sleep(0.02)
 
-            # 阶段 2: TTS 语音合成 —— 将整句回复转为音频推送
+            # 阶段 3: TTS 语音合成
             if full_reply.strip():
                 logger.info("TTS: 正在生成语音...")
                 audio_b64: str = await generate_audio_base64(full_reply)
                 if audio_b64:
-                    await websocket.send_text(f"[AUDIO:{audio_b64}]")
+                    await manager.broadcast(f"[AUDIO:{audio_b64}]")
                     logger.info("TTS: 语音推送完成")
 
-            # 阶段 3: 结束标记 —— 通知前端本轮对话结束
-            await websocket.send_text("[EOF]")
+            # 阶段 4: 结束标记
+            await manager.broadcast("[EOF]")
 
     except WebSocketDisconnect:
-        logger.info("观众退出了直播间")
+        manager.disconnect(websocket)
     except Exception as e:
         logger.error("WebSocket 异常: %s", e, exc_info=True)
-        await websocket.send_text(f"服务器开小差了: {e!s}")
+        manager.disconnect(websocket)

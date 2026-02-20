@@ -4,21 +4,18 @@ tests.test_chat_service
 
 ChatService + ChatSession 业务服务层单元测试。
 
-验证：
-- ChatService 创建独立 session 的能力
-- ChatSession 的 RAG 检索 + Prompt 组装 + LLM 调用协调流程
-- build_rag_prompt 的 Prompt 组装正确性
-
-所有外部依赖（Gemini、FAISS Embedding）通过 mock 替代。
+由于 ``ChatService`` 使用懒初始化（``get_chat_service()``），
+import 本模块不会触发任何真实 API 调用，可安全直接导入类进行测试。
 """
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.prompts.streamer import build_rag_prompt
+from app.services.chat_service import ChatService, ChatSession
 
 
 # ── Prompt 组装测试 ────────────────────────────────────────────────────
@@ -55,15 +52,10 @@ class TestChatSession:
         mock_bot = MagicMock()
         mock_bot.generate_reply = AsyncMock(return_value="才不怕呢！哼！")
 
-        # 直接构造 ChatSession，注入 mock 依赖
-        from app.services.chat_service import ChatSession
-
         session = ChatSession(rag=mock_rag, bot=mock_bot)
         reply = await session.handle_message("你怕什么")
 
-        # 验证 RAG 被调用
         mock_rag.search.assert_called_once_with("你怕什么")
-        # 验证 LLM 收到的 prompt 包含 RAG 知识
         call_args = mock_bot.generate_reply.call_args[0][0]
         assert "青椒" in call_args
         assert "系统检索的背景知识" in call_args
@@ -77,8 +69,6 @@ class TestChatSession:
 
         mock_bot = MagicMock()
         mock_bot.generate_reply = AsyncMock(return_value="你好呀家人们～")
-
-        from app.services.chat_service import ChatSession
 
         session = ChatSession(rag=mock_rag, bot=mock_bot)
         reply = await session.handle_message("你好")
@@ -100,8 +90,6 @@ class TestChatSession:
         mock_bot = MagicMock()
         mock_bot.generate_reply_stream = fake_stream
 
-        from app.services.chat_service import ChatSession
-
         session = ChatSession(rag=mock_rag, bot=mock_bot)
 
         result_chars: list[str] = []
@@ -114,28 +102,34 @@ class TestChatSession:
 # ── ChatService 工厂测试 ──────────────────────────────────────────────
 
 class TestChatService:
-    """测试 ChatService 的会话创建能力。"""
+    """测试 ChatService 的会话管理能力。"""
+
+    def test_get_live_session_returns_same_instance(self) -> None:
+        """get_live_session 应始终返回同一实例。"""
+        service = ChatService.__new__(ChatService)
+        service.rag = MagicMock()
+        mock_bot = MagicMock()
+        mock_bot.model_name = "test-model"
+        service._live_session = ChatSession(rag=service.rag, bot=mock_bot)
+
+        session_a = service.get_live_session()
+        session_b = service.get_live_session()
+
+        assert session_a is session_b
 
     def test_create_session_returns_independent_sessions(self) -> None:
-        """每次 create_session 应返回不同的 ChatSession 实例。"""
-        mock_rag = MagicMock()
-        mock_rag.load_corpus = MagicMock()
+        """create_session 每次应返回不同的 ChatSession 实例。"""
+        service = ChatService.__new__(ChatService)
+        service.rag = MagicMock()
+        service._live_session = None
 
         mock_bot_a = MagicMock()
         mock_bot_b = MagicMock()
 
-        from app.services.chat_service import ChatService
-
-        service = ChatService.__new__(ChatService)
-        service.rag = mock_rag
-
         session_a = service.create_session(bot=mock_bot_a)
         session_b = service.create_session(bot=mock_bot_b)
 
-        # 两个 session 是不同的实例
         assert session_a is not session_b
-        # 但共享同一个 RAG
         assert session_a.rag is session_b.rag
-        # Bot 各自独立
         assert session_a.bot is mock_bot_a
         assert session_b.bot is mock_bot_b

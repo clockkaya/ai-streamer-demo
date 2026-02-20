@@ -5,11 +5,13 @@ app.services.chat_service
 业务服务层 —— 串联 LLM、RAG 和 Prompt 模块。
 
 架构设计:
-  - ``ChatService``（单例）持有共享的只读 RAG 知识库
-  - ``ChatSession``（每连接一个）持有独立的 LLM 对话 Session
+  - ``ChatService``（单例，懒初始化）持有共享的 RAG 知识库
+  - ``ChatSession``（按需创建）持有独立的 LLM 对话 Session
+  - WebSocket 模式：所有连接共享一个 ChatSession（直播间共享上下文）
+  - HTTP 模式：每次请求创建一次性 ChatSession（无状态）
 
-API 路由层通过 ``chat_service.create_session()`` 为每个连接创建独立会话，
-避免不同用户的对话上下文互相污染。
+注意: 使用 ``get_chat_service()`` 获取单例，而非直接导入模块级变量。
+这确保了测试时可以安全 import 本模块而不触发真实 API 调用。
 """
 from __future__ import annotations
 
@@ -41,13 +43,13 @@ def _resolve_knowledge_path() -> str:
 
 
 class ChatSession:
-    """单个用户的聊天会话，持有独立的 LLM 对话 Session。
+    """单个聊天会话，持有独立的 LLM 对话 Session。
 
-    每个 WebSocket 连接或 HTTP 请求应创建各自的 ``ChatSession``，
-    确保对话上下文互不干扰。RAG 知识库通过引用共享，不会重复加载。
+    可被多个 WebSocket 连接共享（直播间模式），也可作为一次性会话使用（HTTP 模式）。
+    RAG 知识库通过引用共享，不会重复加载。
 
     Attributes:
-        bot: 本会话专属的 AI 聊天机器人实例。
+        bot: 本会话的 AI 聊天机器人实例。
         rag: 共享的向量知识库引用（只读）。
     """
 
@@ -56,15 +58,13 @@ class ChatSession:
 
         Args:
             rag: 共享的 ``FAISSKnowledgeBase`` 实例。
-            bot: 本会话专属的 ``AIStreamerBot`` 实例。
+            bot: 本会话的 ``AIStreamerBot`` 实例。
         """
         self.rag = rag
         self.bot = bot
 
     async def handle_message(self, user_message: str) -> str:
         """处理观众弹幕并返回完整回复（非流式）。
-
-        流程: 弹幕 → RAG 检索 → Prompt 组装 → LLM 生成 → 返回回复。
 
         Args:
             user_message: 观众发送的弹幕文本。
@@ -80,8 +80,6 @@ class ChatSession:
     ) -> AsyncGenerator[str, None]:
         """处理观众弹幕并以流式方式逐字返回回复。
 
-        流程: 弹幕 → RAG 检索 → Prompt 组装 → LLM 流式生成 → 逐字 yield。
-
         Args:
             user_message: 观众发送的弹幕文本。
 
@@ -93,14 +91,7 @@ class ChatSession:
             yield char
 
     def _build_prompt(self, user_message: str) -> str:
-        """内部方法：执行 RAG 检索并组装最终 Prompt。
-
-        Args:
-            user_message: 观众发送的弹幕文本。
-
-        Returns:
-            组装后的 Prompt 字符串。
-        """
+        """内部方法：执行 RAG 检索并组装最终 Prompt。"""
         # 先从共享向量库中检索相关知识
         reference_knowledge: str = self.rag.search(user_message)
         if reference_knowledge:
@@ -110,48 +101,58 @@ class ChatSession:
 
 
 class ChatService:
-    """直播间聊天业务服务（全局单例）。
+    """直播间聊天业务服务。
 
-    持有共享的 RAG 知识库，通过 ``create_session()`` 为每个连接
-    创建独立的 ``ChatSession``（各自拥有独立的 LLM 对话上下文）。
+    持有共享的 RAG 知识库，提供两种会话模式：
+
+    - ``get_live_session()`` → 返回直播间共享会话（所有 WS 连接共用同一上下文）
+    - ``create_session()``   → 创建一次性独立会话（HTTP 无状态请求用）
 
     Attributes:
         rag: 共享的向量知识库实例（只读，线程安全）。
     """
 
     def __init__(self, rag: FAISSKnowledgeBase | None = None) -> None:
-        """初始化 ChatService，加载共享 RAG 知识库。
-
-        Args:
-            rag: 可选的 ``FAISSKnowledgeBase`` 实例（用于测试注入 mock）。
-        """
         self.rag: FAISSKnowledgeBase = rag or FAISSKnowledgeBase()
+        self._live_session: ChatSession | None = None
 
         # 启动时加载知识库到内存（全局一次）
         knowledge_path: str = _resolve_knowledge_path()
         logger.debug("知识库路径 -> %s", knowledge_path)
         self.rag.load_corpus(knowledge_path)
 
-    def create_session(self, bot: AIStreamerBot | None = None) -> ChatSession:
-        """为新连接创建独立的聊天会话。
+    def get_live_session(self) -> ChatSession:
+        """获取直播间共享会话（懒初始化单例）。
 
-        每次调用都会创建一个全新的 ``AIStreamerBot``（独立的 Gemini chat session），
-        确保不同用户的对话上下文完全隔离。
-
-        Args:
-            bot: 可选的 ``AIStreamerBot`` 实例（用于测试注入 mock）。
-
-        Returns:
-            新的 ``ChatSession`` 实例。
+        所有 WebSocket 连接共用同一个 LLM 对话上下文，
+        模拟真实直播间：主播能看到所有观众的弹幕并在同一上下文中回应。
         """
+        if self._live_session is None:
+            self._live_session = ChatSession(
+                rag=self.rag,
+                bot=AIStreamerBot(system_prompt=STREAMER_SYSTEM_PROMPT),
+            )
+            logger.info("直播间会话已创建")
+        return self._live_session
+
+    def create_session(self, bot: AIStreamerBot | None = None) -> ChatSession:
+        """为单次请求创建独立的聊天会话（HTTP 无状态用）。"""
         session_bot: AIStreamerBot = bot or AIStreamerBot(
             system_prompt=STREAMER_SYSTEM_PROMPT,
         )
-        logger.debug("创建新会话 | bot_model=%s", session_bot.model_name)
         return ChatSession(rag=self.rag, bot=session_bot)
 
 
 # ---------------------------------------------------------------------------
-# 全局单例 —— 应用启动时初始化（只加载一次 RAG）
+# 懒初始化单例 —— 仅在首次调用 get_chat_service() 时创建，
+# import 本模块不会触发任何 API 调用（测试安全）。
 # ---------------------------------------------------------------------------
-chat_service: ChatService = ChatService()
+_chat_service: ChatService | None = None
+
+
+def get_chat_service() -> ChatService:
+    """获取全局 ChatService 单例（懒初始化）。"""
+    global _chat_service
+    if _chat_service is None:
+        _chat_service = ChatService()
+    return _chat_service

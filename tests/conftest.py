@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import os
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
 
 # ── 在所有测试导入前设置环境变量 ─────────────────────────────────────
 os.environ.setdefault("GEMINI_API_KEY", "test-fake-key")
-os.environ.setdefault("ENVIRONMENT", "test")  # 激活 .env.test 配置
+os.environ.setdefault("ENVIRONMENT", "test")
 
 
 # ── Embedding Mock ────────────────────────────────────────────────────
@@ -49,7 +49,6 @@ def mock_gemini_client() -> MagicMock:
     """返回一个 mock 的 ``genai.Client``，其 embed_content 方法返回假向量。"""
     client = MagicMock()
 
-    # 根据输入文本的 hash 生成确定性向量，保证相同输入得到相同结果
     def _fake_embed(model: str, contents: str) -> FakeEmbedResponse:
         seed = hash(contents) % (2**31)
         return FakeEmbedResponse(make_fake_embedding(seed))
