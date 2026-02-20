@@ -37,10 +37,17 @@ services:
       # 如不需要代理，可注释掉以下两行
       - HTTP_PROXY=http://host.docker.internal:7890
       - HTTPS_PROXY=http://host.docker.internal:7890
+      # MongoDB 连接指向同 compose 网络内的 mongo 容器
+      - MONGO_URI=mongodb://mongo:27017
 
     # ── 端口映射 ──────────────────────────────────────────────────
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
+
+    # ── 依赖：确保 MongoDB 先于应用启动 ──────────────────────────
+    depends_on:
+      mongo:
+        condition: service_started
 
     # ── 网络：打通容器到宿主机的通道 ─────────────────────────────
     extra_hosts:
@@ -52,3 +59,16 @@ services:
 
     # ── 重启策略 ──────────────────────────────────────────────────
     restart: unless-stopped
+
+  # ── MongoDB ────────────────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: ai-streamer-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongo_data:

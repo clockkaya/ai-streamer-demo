@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from app.api import room, ws
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
+from app.db import close_mongo, connect_mongo
 from app.schemas.response import ApiResponse
 
 # 初始化日志系统（必须在其他模块之前）
@@ -29,6 +30,7 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期钩子，仅在 worker 启动/关闭时各执行一次。"""
     # ── 启动 ──
+    await connect_mongo()
     logger.info(
         "🚀 应用已启动 | env=%s | debug=%s | log_level=%s",
         settings.ENVIRONMENT,
@@ -37,6 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     )
     yield
     # ── 关闭 ──
+    await close_mongo()
     logger.info("👋 应用已关闭")
 
 

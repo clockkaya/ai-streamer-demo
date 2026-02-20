@@ -100,6 +100,67 @@ class TestChatSession:
 
         assert "".join(result_chars) == "你好喵"
 
+    @pytest.mark.asyncio
+    async def test_handle_message_persists_to_repo(self) -> None:
+        """有 repo 时，handle_message 应保存 user + model 消息。"""
+        mock_rag = MagicMock()
+        mock_rag.search.return_value = ""
+        mock_bot = MagicMock()
+        mock_bot.generate_reply = AsyncMock(return_value="喵~")
+
+        mock_repo = MagicMock()
+        mock_repo.save_message = AsyncMock()
+
+        session = ChatSession(
+            rag=mock_rag, bot=mock_bot,
+            repo=mock_repo, room_id="star",
+        )
+        await session.handle_message("测试持久化")
+
+        assert mock_repo.save_message.call_count == 2
+        mock_repo.save_message.assert_any_call("star", "user", "测试持久化")
+        mock_repo.save_message.assert_any_call("star", "model", "喵~")
+
+    @pytest.mark.asyncio
+    async def test_handle_message_without_repo_no_persist(self) -> None:
+        """无 repo 时，不应尝试持久化。"""
+        mock_rag = MagicMock()
+        mock_rag.search.return_value = ""
+        mock_bot = MagicMock()
+        mock_bot.generate_reply = AsyncMock(return_value="喵~")
+
+        session = ChatSession(rag=mock_rag, bot=mock_bot)
+        reply = await session.handle_message("你好")
+
+        assert reply == "喵~"
+
+    @pytest.mark.asyncio
+    async def test_handle_message_stream_persists(self) -> None:
+        """流式处理完成后也应持久化。"""
+        mock_rag = MagicMock()
+        mock_rag.search.return_value = ""
+
+        async def fake_stream(prompt: str) -> AsyncGenerator[str, None]:
+            for char in "你好":
+                yield char
+
+        mock_bot = MagicMock()
+        mock_bot.generate_reply_stream = fake_stream
+
+        mock_repo = MagicMock()
+        mock_repo.save_message = AsyncMock()
+
+        session = ChatSession(
+            rag=mock_rag, bot=mock_bot,
+            repo=mock_repo, room_id="star",
+        )
+        async for _ in session.handle_message_stream("测试"):
+            pass
+
+        assert mock_repo.save_message.call_count == 2
+        mock_repo.save_message.assert_any_call("star", "user", "测试")
+        mock_repo.save_message.assert_any_call("star", "model", "你好")
+
 
 # ── LiveRoom 测试 ─────────────────────────────────────────────────────
 
@@ -131,38 +192,47 @@ class TestLiveRoom:
 class TestLiveService:
     """测试 LiveService 的会话和房间管理能力。"""
 
-    def test_get_room_creates_room_lazily(self) -> None:
+    @pytest.mark.asyncio
+    async def test_get_room_creates_room_lazily(self) -> None:
         """首次 get_room 应创建新房间，再次调用返回同一实例。"""
         service = LiveService.__new__(LiveService)
         service.rag = MagicMock()
         service._rooms = {}
+        service.repo = MagicMock()
+        service.repo.get_history = AsyncMock(return_value=[])
 
-        room_a = service.get_room("star")
-        room_b = service.get_room("star")
+        room_a = await service.get_room("star")
+        room_b = await service.get_room("star")
 
         assert room_a is room_b
         assert room_a.room_id == "star"
 
-    def test_get_room_different_ids_independent(self) -> None:
+    @pytest.mark.asyncio
+    async def test_get_room_different_ids_independent(self) -> None:
         """不同 room_id 应返回不同的独立房间。"""
         service = LiveService.__new__(LiveService)
         service.rag = MagicMock()
         service._rooms = {}
+        service.repo = MagicMock()
+        service.repo.get_history = AsyncMock(return_value=[])
 
-        room_star = service.get_room("star")
-        room_moon = service.get_room("moon")
+        room_star = await service.get_room("star")
+        room_moon = await service.get_room("moon")
 
         assert room_star is not room_moon
         assert room_star.session is not room_moon.session
 
-    def test_list_rooms(self) -> None:
+    @pytest.mark.asyncio
+    async def test_list_rooms(self) -> None:
         """list_rooms 应返回所有已创建房间的摘要。"""
         service = LiveService.__new__(LiveService)
         service.rag = MagicMock()
         service._rooms = {}
+        service.repo = MagicMock()
+        service.repo.get_history = AsyncMock(return_value=[])
 
-        service.get_room("star")
-        service.get_room("moon")
+        await service.get_room("star")
+        await service.get_room("moon")
 
         rooms = service.list_rooms()
         room_ids = [r["room_id"] for r in rooms]
@@ -187,3 +257,24 @@ class TestLiveService:
         assert session_a.rag is session_b.rag
         assert session_a.bot is mock_bot_a
         assert session_b.bot is mock_bot_b
+
+    @pytest.mark.asyncio
+    async def test_get_room_restores_history(self) -> None:
+        """get_room 应从 repo 加载历史并传给 bot。"""
+        service = LiveService.__new__(LiveService)
+        service.rag = MagicMock()
+        service._rooms = {}
+        service.repo = MagicMock()
+        service.repo.get_history = AsyncMock(return_value=[
+            {"role": "user", "content": "你好"},
+            {"role": "model", "content": "你好喵~"},
+        ])
+
+        room = await service.get_room("star")
+
+        # 验证 repo 被调用了一次
+        service.repo.get_history.assert_called_once()
+        assert room.room_id == "star"
+        # session 应关联了 repo 和 room_id
+        assert room.session.repo is service.repo
+        assert room.session.room_id == "star"

@@ -63,15 +63,33 @@ class Settings(BaseSettings):
         description="知识库文本文件的相对路径（相对项目根目录）",
     )
 
+    # ── MongoDB ───────────────────────────────────────────────────────
+    MONGO_URI: str = Field(
+        default="mongodb://localhost:27017",
+        description="MongoDB 连接 URI",
+    )
+    MONGO_DB_NAME: str = Field(
+        default="ai_streamer",
+        description="MongoDB 数据库名",
+    )
+    CHAT_HISTORY_LIMIT: int = Field(
+        default=50,
+        description="恢复对话上下文时加载的最大历史消息条数",
+    )
+
     # ── 服务 ──────────────────────────────────────────────────────────
     HOST: str = Field(default="0.0.0.0", description="服务监听地址")
     PORT: int = Field(default=8000, description="服务监听端口")
     LOG_LEVEL: str = Field(default="INFO", description="日志级别（可被环境属性覆盖）")
 
     # ── Pydantic Settings ─────────────────────────────────────────────
-    # 先加载 .env.{env} 再加载 .env，前者优先级更高
+    # pydantic-settings v2: 元组中靠后的文件优先级更高
+    # 使用绝对路径，确保无论在哪个目录启动都能找到 .env
     model_config = SettingsConfigDict(
-        env_file=(f".env.{_CURRENT_ENV}", ".env"),
+        env_file=(
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), f".env.{_CURRENT_ENV}"),
+        ),
         env_file_encoding="utf-8",
         extra="ignore",
     )

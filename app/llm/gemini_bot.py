@@ -34,6 +34,7 @@ class AIStreamerBot:
         system_prompt: str,
         model_name: str | None = None,
         client: genai.Client | None = None,
+        history: list[types.Content] | None = None,
     ) -> None:
         """初始化聊天机器人。
 
@@ -41,19 +42,27 @@ class AIStreamerBot:
             system_prompt: 系统 Prompt，定义 AI 人设和行为规则。
             model_name: Gemini 模型名称，默认读取 ``settings.GEMINI_MODEL``。
             client: 可选的 ``genai.Client`` 实例（用于测试注入 mock）。
+            history: 可选的对话历史，用于恢复之前的对话上下文。
         """
         self.model_name: str = model_name or settings.GEMINI_MODEL
         self.system_prompt: str = system_prompt
         self._client: genai.Client = client or create_gemini_client()
 
-        # 创建异步聊天 Session，注入 system_prompt 作为人设指令
+        # 创建异步聊天 Session，注入 system_prompt 和可选的对话历史
         self.chat_session = self._client.aio.chats.create(
             model=self.model_name,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
             ),
+            history=history or [],
         )
-        logger.info("LLM 客户端已初始化 | model=%s", self.model_name)
+        if history:
+            logger.info(
+                "LLM 客户端已初始化（含 %d 条历史）| model=%s",
+                len(history), self.model_name,
+            )
+        else:
+            logger.info("LLM 客户端已初始化 | model=%s", self.model_name)
 
     async def generate_reply(self, prompt: str) -> str:
         """发送消息并获取完整回复（非流式）。

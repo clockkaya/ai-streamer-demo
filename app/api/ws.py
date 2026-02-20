@@ -40,7 +40,7 @@ async def websocket_room_endpoint(websocket: WebSocket, room_id: str) -> None:
         room_id: 直播间唯一标识。
     """
     # 获取（或自动创建）目标房间
-    room = get_live_service().get_room(room_id)
+    room = await get_live_service().get_room(room_id)
     await room.manager.connect(websocket)
     logger.info("观众进入直播间 | room=%s | 在线: %d", room_id, room.online_count)
 

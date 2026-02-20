@@ -2,18 +2,19 @@
 app.api.room
 ~~~~~~~~~~~~~
 
-直播间 REST 接口 —— 房间管理 + 弹幕发送。
+直播间 REST 接口 —— 房间管理 + 弹幕发送 + 历史回看。
 
 路由前缀 ``/api/rooms``，所有房间相关操作统一在此处。
 
 端点:
-  - ``GET  /rooms``                      → 获取活跃房间列表
-  - ``GET  /rooms/{room_id}``            → 获取房间详情
-  - ``POST /rooms/{room_id}/danmaku``    → 发送弹幕（HTTP 一次性，无状态）
+  - ``GET  /rooms``                       → 获取活跃房间列表
+  - ``GET  /rooms/{room_id}``             → 获取房间详情
+  - ``POST /rooms/{room_id}/danmaku``     → 发送弹幕（HTTP 一次性，无状态）
+  - ``GET  /rooms/{room_id}/history``     → 获取对话历史（分页）
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from app.schemas.response import ApiResponse
@@ -37,6 +38,22 @@ class DanmakuResponseData(BaseModel):
     bot_reply: str = Field(..., description="AI 主播的回复")
 
 
+class ChatMessageData(BaseModel):
+    """单条对话消息。"""
+
+    role: str = Field(..., description="消息角色：user / model")
+    content: str = Field(..., description="消息文本")
+    created_at: str = Field(..., description="创建时间（ISO 格式）")
+
+
+class HistoryResponseData(BaseModel):
+    """对话历史响应数据。"""
+
+    room_id: str = Field(..., description="房间 ID")
+    messages: list[ChatMessageData] = Field(..., description="消息列表")
+    total: int = Field(..., description="本次返回条数")
+
+
 # ── 房间管理端点 ──────────────────────────────────────────────────────
 
 @router.get("/rooms", summary="获取活跃房间列表")
@@ -55,7 +72,7 @@ async def room_info(room_id: str) -> ApiResponse[dict]:
     Args:
         room_id: 直播间唯一标识。
     """
-    room = get_live_service().get_room(room_id)
+    room = await get_live_service().get_room(room_id)
     return ApiResponse.ok(data=room.info())
 
 
@@ -84,5 +101,48 @@ async def send_danmaku(
         data=DanmakuResponseData(
             user_message=request.message,
             bot_reply=reply,
+        ),
+    )
+
+
+# ── 历史回看端点 ──────────────────────────────────────────────────────
+
+@router.get(
+    "/rooms/{room_id}/history",
+    summary="获取对话历史",
+    response_model=ApiResponse[HistoryResponseData],
+)
+async def get_history(
+    room_id: str,
+    skip: int = Query(0, ge=0, description="跳过条数（分页偏移）"),
+    limit: int = Query(100, ge=1, le=500, description="每页最大条数"),
+) -> ApiResponse[HistoryResponseData]:
+    """获取指定直播间的对话历史记录（分页，按时间正序）。
+
+    Args:
+        room_id: 直播间唯一标识。
+        skip: 跳过条数（分页偏移）。
+        limit: 每页最大条数（1-500）。
+    """
+    service = get_live_service()
+    messages = await service.repo.get_all_messages(
+        room_id, skip=skip, limit=limit,
+    )
+
+    # 将 datetime 转为 ISO 字符串
+    chat_messages = [
+        ChatMessageData(
+            role=msg["role"],
+            content=msg["content"],
+            created_at=msg["created_at"].isoformat(),
+        )
+        for msg in messages
+    ]
+
+    return ApiResponse.ok(
+        data=HistoryResponseData(
+            room_id=room_id,
+            messages=chat_messages,
+            total=len(chat_messages),
         ),
     )
