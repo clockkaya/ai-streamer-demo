@@ -1,33 +1,54 @@
+# ============================================================================
+#  docker-compose.yml — 容器编排
+#
+#  引用关系:
+#    docker-compose.yml
+#       ├── 读取 .env 文件 (env_file + Compose 变量替换)
+#       ├── 引用 Dockerfile (build: .)
+#       └── 注入环境变量到容器 ──> app/core/config.py
+#
+#  设计原则:
+#    - .env 提供基础配置（API Key、环境标识等）
+#    - docker-compose.yml 只做 Docker 专属的覆盖（代理地址从 127.0.0.1 → host.docker.internal）
+#    - 所有业务参数的默认值由 config.py 统一管理
+#
+#  用法:
+#    docker-compose up -d --build         # 首次构建并启动（默认 dev 环境）
+#    ENVIRONMENT=prod docker-compose up -d # 以生产模式启动
+#    docker-compose logs -f               # 查看日志
+# ============================================================================
+
 services:
   ai-streamer:
-    # 1. 指定使用我们刚才构建好的本地镜像
-    image: ai-streamer:v1.1
-
-    build: .
-
-    # 2. 给容器起个固定的名字，方便后续查看
+    image: ai-streamer:v1
+    build:
+      context: .
+      args:
+        APP_PORT: ${PORT:-8000}
     container_name: ai-streamer-container
 
-    # 3. 端口映射：宿主机 8000 -> 容器 8000
-    ports:
-      - "8000:8000"
+    # ── 加载 .env 作为容器环境变量的基础层 ─────────────────────────
+    env_file:
+      - .env
 
-    # 4. 环境变量配置
+    # ── Docker 专属覆盖（覆盖 .env 中的同名变量）─────────────────
     environment:
-      # 在这里填入你的真实 Key，或者使用 ${GEMINI_API_KEY} 引用 .env 文件
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # 容器内代理需指向 host.docker.internal（而非 .env.dev 中的 127.0.0.1）
+      # 如不需要代理，可注释掉以下两行
+      - HTTP_PROXY=http://host.docker.internal:7890
+      - HTTPS_PROXY=http://host.docker.internal:7890
 
-      # 配置容器走宿主机的代理 (WSL2/Docker Desktop 专用魔法地址)
-      - http_proxy=http://host.docker.internal:33210
-      - https_proxy=http://host.docker.internal:33210
+    # ── 端口映射 ──────────────────────────────────────────────────
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
 
-    # 5. ⚠️ 关键配置：打通容器与宿主机的网络通道
-    # 这行配置能确保容器内能解析 host.docker.internal 从而连上你的代理
+    # ── 网络：打通容器到宿主机的通道 ─────────────────────────────
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-    # 6. 自动重启策略：挂了自动拉起
-    restart: always
-
+    # ── 数据卷：知识库热更新（修改文件后重启即生效）───────────────
     volumes:
-      - ./data/knowledge.txt:/app/data/knowledge.txt
+      - ./data:/app/data:ro
+
+    # ── 重启策略 ──────────────────────────────────────────────────
+    restart: unless-stopped

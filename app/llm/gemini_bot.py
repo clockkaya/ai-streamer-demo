@@ -4,19 +4,20 @@ app.llm.gemini_bot
 
 纯 LLM 客户端封装 —— 只负责与 Google Gemini API 的连接和调用。
 
-不包含任何 RAG 检索或 Prompt 组装逻辑（这些职责属于 ChatController）。
+不包含任何 RAG 检索或 Prompt 组装逻辑（这些职责属于 ChatService）。
 通过构造函数接受 ``system_prompt`` 参数实现依赖注入，方便测试和替换。
 """
-
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from typing import Optional
 
 from google import genai
 from google.genai import types
 
 from app.core.config import settings
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def _create_client() -> genai.Client:
@@ -39,8 +40,8 @@ class AIStreamerBot:
     def __init__(
         self,
         system_prompt: str,
-        model_name: Optional[str] = None,
-        client: Optional[genai.Client] = None,
+        model_name: str | None = None,
+        client: genai.Client | None = None,
     ) -> None:
         """初始化聊天机器人。
 
@@ -53,12 +54,14 @@ class AIStreamerBot:
         self.system_prompt: str = system_prompt
         self._client: genai.Client = client or _create_client()
 
+        # 创建异步聊天 Session，注入 system_prompt 作为人设指令
         self.chat_session = self._client.aio.chats.create(
             model=self.model_name,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
             ),
         )
+        logger.info("LLM 客户端已初始化 | model=%s", self.model_name)
 
     async def generate_reply(self, prompt: str) -> str:
         """发送消息并获取完整回复（非流式）。
@@ -73,6 +76,7 @@ class AIStreamerBot:
             response = await self.chat_session.send_message(prompt)
             return response.text
         except Exception as e:
+            logger.error("LLM 调用异常: %s", e, exc_info=True)
             return f"哎呀，直播间线路好像卡了一下... (错误信息: {e!s})"
 
     async def generate_reply_stream(self, prompt: str) -> AsyncGenerator[str, None]:
@@ -88,7 +92,9 @@ class AIStreamerBot:
             response_stream = await self.chat_session.send_message_stream(prompt)
             async for chunk in response_stream:
                 if chunk.text:
+                    # 逐字 yield，实现打字机效果
                     for char in chunk.text:
                         yield char
         except Exception as e:
+            logger.error("LLM 流式调用异常: %s", e, exc_info=True)
             yield f"哎呀，直播间线路好像卡了一下... (错误信息: {e!s})"
