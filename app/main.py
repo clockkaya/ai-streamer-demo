@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import chat, ws
+from app.api import room, ws
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.schemas.response import ApiResponse
@@ -70,7 +70,7 @@ else:
     )
 
 # ── 路由挂载 ──────────────────────────────────────────────────────────
-app.include_router(chat.router, prefix="/api", tags=["Live Chat"])
+app.include_router(room.router, prefix="/api", tags=["Room & Danmaku"])
 app.include_router(ws.router, tags=["WebSocket Live"])
 
 

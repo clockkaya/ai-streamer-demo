@@ -4,7 +4,7 @@ app.llm.gemini_bot
 
 纯 LLM 客户端封装 —— 只负责与 Google Gemini API 的连接和调用。
 
-不包含任何 RAG 检索或 Prompt 组装逻辑（这些职责属于 ChatService）。
+不包含任何 RAG 检索或 Prompt 组装逻辑（这些职责属于 ``LiveService``）。
 通过构造函数接受 ``system_prompt`` 参数实现依赖注入，方便测试和替换。
 """
 from __future__ import annotations
@@ -16,17 +16,9 @@ from google.genai import types
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.llm.client import create_gemini_client
 
 logger = get_logger(__name__)
-
-
-def _create_client() -> genai.Client:
-    """创建 Gemini API 客户端实例。
-
-    Returns:
-        已认证的 ``genai.Client``。
-    """
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
 class AIStreamerBot:
@@ -52,7 +44,7 @@ class AIStreamerBot:
         """
         self.model_name: str = model_name or settings.GEMINI_MODEL
         self.system_prompt: str = system_prompt
-        self._client: genai.Client = client or _create_client()
+        self._client: genai.Client = client or create_gemini_client()
 
         # 创建异步聊天 Session，注入 system_prompt 作为人设指令
         self.chat_session = self._client.aio.chats.create(

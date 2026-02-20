@@ -17,17 +17,9 @@ from google import genai
 
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.llm.client import create_gemini_client
 
 logger = get_logger(__name__)
-
-
-def _create_client() -> genai.Client:
-    """创建 Gemini API 客户端实例。
-
-    Returns:
-        已认证的 ``genai.Client``。
-    """
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
 
 
 class FAISSKnowledgeBase:
@@ -54,7 +46,7 @@ class FAISSKnowledgeBase:
         # L2 距离索引，适合中小规模知识库的精确检索
         self.index: faiss.IndexFlatL2 = faiss.IndexFlatL2(self.dimension)
         self.chunks: list[str] = []
-        self._client: genai.Client = client or _create_client()
+        self._client: genai.Client = client or create_gemini_client()
 
     def _get_embedding(self, text: str) -> list[float]:
         """调用 Gemini Embedding API 将文本转换为向量。

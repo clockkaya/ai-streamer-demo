@@ -1,100 +1,190 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <title>AI 主播直播间</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background-color: #f4f4f9; }
-        #chat-box { width: 100%; height: 400px; border: 1px solid #ccc; background: white; padding: 10px; overflow-y: auto; margin-bottom: 10px; border-radius: 8px; line-height: 1.6;}
-        .bot-msg { color: #e91e63; font-weight: bold; }
-        .user-msg { color: #2196f3; }
-        .other-user-msg { color: #9c27b0; }
-        .system-msg { color: #999; font-style: italic; font-size: 0.9em; }
-        input { width: 70%; padding: 10px; border-radius: 4px; border: 1px solid #ccc;}
-        button { padding: 10px 20px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;}
-        #status { margin-top: 10px; color: #666; }
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background-color: #f4f4f9;
+        }
+
+        #chat-box {
+            width: 100%;
+            height: 400px;
+            border: 1px solid #ccc;
+            background: white;
+            padding: 10px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            line-height: 1.6;
+        }
+
+        .bot-msg {
+            color: #e91e63;
+            font-weight: bold;
+        }
+
+        .user-msg {
+            color: #2196f3;
+        }
+
+        .other-user-msg {
+            color: #9c27b0;
+        }
+
+        .system-msg {
+            color: #999;
+            font-style: italic;
+            font-size: 0.9em;
+        }
+
+        input {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+
+        #danmaku-input {
+            width: 60%;
+        }
+
+        #room-input {
+            width: 15%;
+            margin-right: 5px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        #connect-btn {
+            background-color: #2196f3;
+        }
+
+        #status {
+            margin-top: 10px;
+            color: #666;
+        }
+
+        .controls {
+            margin-bottom: 15px;
+        }
     </style>
 </head>
+
 <body>
     <h2>🔴 AI 虚拟主播直播间 (WebSocket 测试)</h2>
+
+    <div class="controls">
+        <input type="text" id="room-input" value="star" placeholder="房间 ID">
+        <button id="connect-btn" onclick="connectRoom()">加入房间</button>
+        <span id="status">未连接</span>
+    </div>
+
     <div id="chat-box"></div>
-    <input type="text" id="danmaku-input" placeholder="输入弹幕和主播互动吧..." onkeypress="if(event.key === 'Enter') sendDanmaku()">
-    <button onclick="sendDanmaku()">发送弹幕</button>
-    <div id="status">连接中...</div>
+    <input type="text" id="danmaku-input" placeholder="输入弹幕和主播互动吧..."
+        onkeypress="if(event.key === 'Enter') sendDanmaku()" disabled>
+    <button onclick="sendDanmaku()" id="send-btn" disabled>发送弹幕</button>
 
     <script>
-        const ws = new WebSocket("ws://localhost:8000/ws/chat");
+        let ws = null;
         const chatBox = document.getElementById("chat-box");
         const statusEl = document.getElementById("status");
-        let currentBotSpan = null;  // 追踪主播当前正在输出的 DOM 节点
-        let lastSentMessage = null; // 记录自己刚发的消息，用于区分"自己"和"其他观众"
+        const danmakuInput = document.getElementById("danmaku-input");
+        const sendBtn = document.getElementById("send-btn");
+        let currentBotSpan = null;
+        let lastSentMessage = null;
 
-        ws.onopen = function() {
-            statusEl.textContent = "✅ 已连接直播间";
-            statusEl.style.color = "#4CAF50";
-        };
+        function connectRoom() {
+            const roomId = document.getElementById("room-input").value.trim();
+            if (!roomId) { alert("请输入房间 ID"); return; }
 
-        ws.onclose = function() {
-            statusEl.textContent = "❌ 连接已断开";
-            statusEl.style.color = "#f44336";
-        };
+            // 断开旧连接
+            if (ws) { ws.close(); }
 
-        ws.onmessage = function(event) {
-            const msg = event.data;
+            chatBox.innerHTML = "";
+            chatBox.innerHTML += `<div class="system-msg">正在加入房间 [${roomId}]...</div>`;
 
-            // 处理广播的观众弹幕 [USER:消息内容]
-            if (msg.startsWith("[USER:") && msg.endsWith("]")) {
-                const userMsg = msg.substring(6, msg.length - 1);
-                // 判断是自己发的还是其他观众发的
-                if (userMsg === lastSentMessage) {
-                    // 自己的弹幕（已经在 sendDanmaku 中显示过了，跳过）
-                    lastSentMessage = null;
-                } else {
-                    // 其他观众的弹幕
-                    chatBox.innerHTML += `<div class="other-user-msg">💬 观众: ${userMsg}</div>`;
-                    chatBox.scrollTop = chatBox.scrollHeight;
+            ws = new WebSocket(`ws://localhost:8000/ws/rooms/${roomId}`);
+
+            ws.onopen = function () {
+                statusEl.textContent = `✅ 已连接房间 [${roomId}]`;
+                statusEl.style.color = "#4CAF50";
+                danmakuInput.disabled = false;
+                sendBtn.disabled = false;
+                chatBox.innerHTML += `<div class="system-msg">已加入房间 [${roomId}] 🎉</div>`;
+            };
+
+            ws.onclose = function () {
+                statusEl.textContent = "❌ 连接已断开";
+                statusEl.style.color = "#f44336";
+                danmakuInput.disabled = true;
+                sendBtn.disabled = true;
+            };
+
+            ws.onmessage = function (event) {
+                const msg = event.data;
+
+                // 处理广播的观众弹幕
+                if (msg.startsWith("[USER:") && msg.endsWith("]")) {
+                    const userMsg = msg.substring(6, msg.length - 1);
+                    if (userMsg === lastSentMessage) {
+                        lastSentMessage = null;
+                    } else {
+                        chatBox.innerHTML += `<div class="other-user-msg">💬 观众: ${userMsg}</div>`;
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                    }
+                    return;
                 }
-                return;
-            }
 
-            // 处理音频数据
-            if (msg.startsWith("[AUDIO:")) {
-                const base64Audio = msg.substring(7, msg.length - 1);
-                const audio = new Audio("data:audio/mp3;base64," + base64Audio);
-                audio.play();
-                return;
-            }
+                // 处理音频数据
+                if (msg.startsWith("[AUDIO:")) {
+                    const base64Audio = msg.substring(7, msg.length - 1);
+                    const audio = new Audio("data:audio/mp3;base64," + base64Audio);
+                    audio.play();
+                    return;
+                }
 
-            // 处理结束标记
-            if (msg === "[EOF]") {
-                currentBotSpan = null;
-                chatBox.innerHTML += "<hr/>";
+                // 处理结束标记
+                if (msg === "[EOF]") {
+                    currentBotSpan = null;
+                    chatBox.innerHTML += "<hr/>";
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                    return;
+                }
+
+                // 处理主播流式回复
+                if (!currentBotSpan) {
+                    chatBox.innerHTML += `<span class="bot-msg">🌟 星瞳: </span>`;
+                    currentBotSpan = document.createElement("span");
+                    chatBox.appendChild(currentBotSpan);
+                }
+                currentBotSpan.innerHTML += msg;
                 chatBox.scrollTop = chatBox.scrollHeight;
-                return;
-            }
-
-            // 处理主播流式回复
-            if (!currentBotSpan) {
-                chatBox.innerHTML += `<span class="bot-msg">🌟 星瞳: </span>`;
-                currentBotSpan = document.createElement("span");
-                chatBox.appendChild(currentBotSpan);
-            }
-            currentBotSpan.innerHTML += msg;
-            chatBox.scrollTop = chatBox.scrollHeight;
-        };
+            };
+        }
 
         function sendDanmaku() {
-            const input = document.getElementById("danmaku-input");
-            const text = input.value;
+            if (!ws || ws.readyState !== WebSocket.OPEN) { return; }
+            const text = danmakuInput.value;
             if (text) {
-                // 先在本地显示自己的弹幕
                 chatBox.innerHTML += `<div class="user-msg">💬 你: ${text}</div>`;
-                lastSentMessage = text;  // 记录，避免广播时重复显示
+                lastSentMessage = text;
                 ws.send(text);
-                input.value = "";
+                danmakuInput.value = "";
                 chatBox.scrollTop = chatBox.scrollHeight;
             }
         }
     </script>
 </body>
+
 </html>
