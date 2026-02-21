@@ -68,3 +68,35 @@ def sample_knowledge_file(tmp_path: Any) -> str:
     file_path = tmp_path / "test_knowledge.txt"
     file_path.write_text(content, encoding="utf-8")
     return str(file_path)
+
+
+@pytest.fixture()
+def sample_knowledge_md_file(tmp_path: Any) -> str:
+    """创建一个 .md 格式的测试知识库文件。"""
+    content = "# 游戏攻略\n\n星瞳在排位赛中喜欢用狙击枪。\n\n## 技巧\n\n爆头伤害加成 200%。"
+    file_path = tmp_path / "test_knowledge.md"
+    file_path.write_text(content, encoding="utf-8")
+    return str(file_path)
+
+
+@pytest.fixture()
+def sample_knowledge_json_file(tmp_path: Any) -> str:
+    """创建一个 .json 格式的测试知识库文件。"""
+    import json
+    data = ["星瞳的口头禅是本小姐可是天才", "星瞳最害怕青椒"]
+    file_path = tmp_path / "test_knowledge.json"
+    file_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return str(file_path)
+
+
+@pytest.fixture()
+def sample_knowledge_dir(tmp_path: Any) -> str:
+    """创建一个包含多格式知识库文件的测试目录。"""
+    import json
+    (tmp_path / "a.txt").write_text("文本知识条目。", encoding="utf-8")
+    (tmp_path / "b.md").write_text("# MD 知识\n\nMarkdown 知识条目。", encoding="utf-8")
+    (tmp_path / "c.json").write_text(
+        json.dumps(["JSON知识条目"], ensure_ascii=False), encoding="utf-8",
+    )
+    return str(tmp_path)
+

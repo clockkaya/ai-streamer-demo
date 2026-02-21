@@ -1,5 +1,5 @@
 """
-app.schemas.response
+app.schemas.api_response
 ~~~~~~~~~~~~~~~~~~~~
 
 全局统一应答体，所有 API 接口复用此结构返回一致的 JSON 格式。

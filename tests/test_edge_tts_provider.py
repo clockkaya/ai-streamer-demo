@@ -25,8 +25,8 @@ async def test_generate_audio_returns_base64() -> None:
     mock_communicate = MagicMock()
     mock_communicate.stream = fake_stream
 
-    with patch("app.tts.engine.edge_tts.Communicate", return_value=mock_communicate):
-        from app.tts.engine import generate_audio_base64
+    with patch("app.tts.edge_tts_provider.edge_tts.Communicate", return_value=mock_communicate):
+        from app.tts.edge_tts_provider import generate_audio_base64
 
         result: str = await generate_audio_base64("测试文本")
 
@@ -51,8 +51,8 @@ async def test_generate_audio_multiple_chunks() -> None:
     mock_communicate = MagicMock()
     mock_communicate.stream = fake_stream
 
-    with patch("app.tts.engine.edge_tts.Communicate", return_value=mock_communicate):
-        from app.tts.engine import generate_audio_base64
+    with patch("app.tts.edge_tts_provider.edge_tts.Communicate", return_value=mock_communicate):
+        from app.tts.edge_tts_provider import generate_audio_base64
 
         result: str = await generate_audio_base64("多段音频")
 
@@ -64,10 +64,10 @@ async def test_generate_audio_multiple_chunks() -> None:
 async def test_generate_audio_exception_returns_empty() -> None:
     """TTS 引擎异常时应返回空字符串而不是抛出异常。"""
     with patch(
-        "app.tts.engine.edge_tts.Communicate",
+        "app.tts.edge_tts_provider.edge_tts.Communicate",
         side_effect=RuntimeError("网络错误"),
     ):
-        from app.tts.engine import generate_audio_base64
+        from app.tts.edge_tts_provider import generate_audio_base64
 
         result: str = await generate_audio_base64("异常测试")
 

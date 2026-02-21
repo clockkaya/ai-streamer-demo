@@ -1,5 +1,5 @@
 """
-app.api.room
+app.api.live_endpoints
 ~~~~~~~~~~~~~
 
 直播间 REST 接口 —— 房间管理 + 弹幕发送 + 历史回看。
@@ -15,64 +15,41 @@ app.api.room
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, Field
 
-from app.schemas.response import ApiResponse
-from app.services.live_service import get_live_service
+from app.schemas.api_response import ApiResponse
+from app.schemas.live_interactions import (
+    ChatMessageData,
+    DanmakuRequest,
+    DanmakuResponseData,
+    HistoryResponseData,
+    RoomInfoData,
+)
+from app.services.live_system import get_live_system
 
 router: APIRouter = APIRouter()
 
 
-# ── 请求/响应模型 ─────────────────────────────────────────────────────
-
-class DanmakuRequest(BaseModel):
-    """弹幕请求体。"""
-
-    message: str = Field(..., description="观众发送的弹幕文本")
-
-
-class DanmakuResponseData(BaseModel):
-    """弹幕响应数据。"""
-
-    user_message: str = Field(..., description="观众原始弹幕")
-    bot_reply: str = Field(..., description="AI 主播的回复")
-
-
-class ChatMessageData(BaseModel):
-    """单条对话消息。"""
-
-    role: str = Field(..., description="消息角色：user / model")
-    content: str = Field(..., description="消息文本")
-    created_at: str = Field(..., description="创建时间（ISO 格式）")
-
-
-class HistoryResponseData(BaseModel):
-    """对话历史响应数据。"""
-
-    room_id: str = Field(..., description="房间 ID")
-    messages: list[ChatMessageData] = Field(..., description="消息列表")
-    total: int = Field(..., description="本次返回条数")
-
-
 # ── 房间管理端点 ──────────────────────────────────────────────────────
 
+
 @router.get("/rooms", summary="获取活跃房间列表")
-async def list_rooms() -> ApiResponse[list[dict]]:
+async def list_rooms() -> ApiResponse[list[RoomInfoData]]:
     """返回所有已创建的活跃直播间列表。"""
-    rooms = get_live_service().list_rooms()
+    rooms = get_live_system().list_rooms()
     return ApiResponse.ok(data=rooms)
 
 
 @router.get("/rooms/{room_id}", summary="获取房间详情")
-async def room_info(room_id: str) -> ApiResponse[dict]:
+async def room_info(room_id: str, persona_id: str | None = None) -> ApiResponse[RoomInfoData]:
     """返回指定直播间的详细信息（在线人数等）。
 
     如果房间不存在，会自动创建。
 
     Args:
         room_id: 直播间唯一标识。
+        persona_id: (可选)新建房间时指定的主播灵魂包 ID。
     """
-    room = await get_live_service().get_room(room_id)
+    room = await get_live_system().get_room(room_id, persona_id=persona_id)
     return ApiResponse.ok(data=room.info())
 
 
@@ -84,17 +61,20 @@ async def room_info(room_id: str) -> ApiResponse[dict]:
     response_model=ApiResponse[DanmakuResponseData],
 )
 async def send_danmaku(
-    room_id: str, request: DanmakuRequest,
+    room_id: str, request: DanmakuRequest, persona_id: str | None = None,
 ) -> ApiResponse[DanmakuResponseData]:
     """向指定直播间发送弹幕，获取 AI 主播的回复。
 
-    每次请求创建一次性 ChatSession（无状态，不保留上下文）。
+    每次请求创建一次性 BotContext（无状态，不保留上下文）。
+    注意：通过此 HTTP 接口发送的弹幕及回复不会持久化到数据库。
+    如果需要保留上下文和历史记录，请使用 WebSocket 接口连接所在房间。
 
     Args:
         room_id: 直播间唯一标识。
         request: 包含弹幕文本的请求体。
+        persona_id: (可选)使用的角色包 ID。
     """
-    session = get_live_service().create_session()
+    session = get_live_system().create_session(persona_id=persona_id)
     reply: str = await session.handle_message(request.message)
 
     return ApiResponse.ok(
@@ -124,7 +104,7 @@ async def get_history(
         skip: 跳过条数（分页偏移）。
         limit: 每页最大条数（1-500）。
     """
-    service = get_live_service()
+    service = get_live_system()
     messages = await service.repo.get_all_messages(
         room_id, skip=skip, limit=limit,
     )

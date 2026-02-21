@@ -10,15 +10,24 @@ app.db.chat_repository
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TypedDict
 
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from app.core.logging import get_logger
+from app.schemas.live_interactions import MessageRole
 
 logger = get_logger(__name__)
 
 # 集合名称
-_COLLECTION = "chat_messages"
+_COLLECTION_NAME = "chat_messages"
+
+class ChatMessage(TypedDict):
+    """代表 MongoDB 中 chat_messages 集合的单条记录"""
+    room_id: str
+    role: MessageRole
+    content: str
+    created_at: datetime
 
 
 class ChatRepository:
@@ -30,7 +39,7 @@ class ChatRepository:
 
     def __init__(self, db: AsyncIOMotorDatabase) -> None:
         self.db = db
-        self._collection = db[_COLLECTION]
+        self._collection = db[_COLLECTION_NAME]
         self._indexes_created = False
 
     async def _ensure_indexes(self) -> None:
@@ -48,7 +57,7 @@ class ChatRepository:
     async def save_message(
         self,
         room_id: str,
-        role: str,
+        role: MessageRole,
         content: str,
     ) -> None:
         """保存一条对话消息。
@@ -71,7 +80,7 @@ class ChatRepository:
         self,
         room_id: str,
         limit: int = 50,
-    ) -> list[dict]:
+    ) -> list[ChatMessage]:
         """获取指定房间的最近 N 条消息（按时间正序）。
 
         用于恢复 Gemini chat session 上下文。
@@ -104,7 +113,7 @@ class ChatRepository:
         room_id: str,
         skip: int = 0,
         limit: int = 100,
-    ) -> list[dict]:
+    ) -> list[ChatMessage]:
         """获取指定房间的全部消息（分页，用于历史回看）。
 
         Args:

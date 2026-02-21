@@ -1,74 +1,56 @@
 # ============================================================================
-#  docker-compose.yml — 容器编排
+#  docker-compose.yml (v1.1)
 #
-#  引用关系:
-#    docker-compose.yml
-#       ├── 读取 .env 文件 (env_file + Compose 变量替换)
-#       ├── 引用 Dockerfile (build: .)
-#       └── 注入环境变量到容器 ──> app/core/config.py
-#
-#  设计原则:
-#    - .env 提供基础配置（API Key、环境标识等）
-#    - docker-compose.yml 只做 Docker 专属的覆盖（代理地址从 127.0.0.1 → host.docker.internal）
-#    - 所有业务参数的默认值由 config.py 统一管理
-#
-#  用法:
-#    docker-compose up -d --build         # 首次构建并启动（默认 dev 环境）
-#    ENVIRONMENT=prod docker-compose up -d # 以生产模式启动
-#    docker-compose logs -f               # 查看日志
+#  架构说明:
+#    - 仅部署 ai-streamer 核心服务容器
+#    - 数据库依赖宿主机上已经运行的 `my_mongodb` 容器 (映射在宿主机 27017 端口)
+#    - 通过 host.docker.internal 实现在容器内穿透访问宿主机数据库
 # ============================================================================
 
 services:
   ai-streamer:
-    image: ai-streamer:v1
+    image: ai-streamer:v1.1
     build:
       context: .
       args:
         APP_PORT: ${PORT:-8000}
-    container_name: ai-streamer-container
+    container_name: ai-streamer-v1.1
 
-    # ── 加载 .env 作为容器环境变量的基础层 ─────────────────────────
+    # 包含 API KEY 和基础环境标志
     env_file:
       - .env
 
-    # ── Docker 专属覆盖（覆盖 .env 中的同名变量）─────────────────
     environment:
-      # 容器内代理需指向 host.docker.internal（而非 .env.dev 中的 127.0.0.1）
-      # 如不需要代理，可注释掉以下两行
-      - HTTP_PROXY=http://host.docker.internal:7890
-      - HTTPS_PROXY=http://host.docker.internal:7890
-      # MongoDB 连接指向同 compose 网络内的 mongo 容器
-      - MONGO_URI=mongodb://mongo:27017
+      # 如果在国内需要代理，请去掉注释并修改代理地址
+      # - HTTP_PROXY=http://host.docker.internal:7890
+      # - HTTPS_PROXY=http://host.docker.internal:7890
+      
+      # ⚠️ 关键：指向刚才你提供的、已经在宿主机运行的 my_mongodb，使用 host.docker.internal
+      - MONGO_URI=mongodb://<usernamae>:<password>@host.docker.internal:27017/?authSource=admin
 
-    # ── 端口映射 ──────────────────────────────────────────────────
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
 
-    # ── 依赖：确保 MongoDB 先于应用启动 ──────────────────────────
-    depends_on:
-      mongo:
-        condition: service_started
-
-    # ── 网络：打通容器到宿主机的通道 ─────────────────────────────
+    # 允许容器访问宿主机网络
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
-    # ── 数据卷：知识库热更新（修改文件后重启即生效）───────────────
     volumes:
       - ./data:/app/data:ro
 
-    # ── 重启策略 ──────────────────────────────────────────────────
-    restart: unless-stopped
+    # 健康检查，确保 FastAPI 正常运行
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:${PORT:-8000}/health\")' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
-  # ── MongoDB ────────────────────────────────────────────────────
-  mongo:
-    image: mongo:7
-    container_name: ai-streamer-mongo
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
     restart: unless-stopped
-
-volumes:
-  mongo_data:
+    
+    # 日志轮转，避免日志文件过大
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

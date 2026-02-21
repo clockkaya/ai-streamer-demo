@@ -1,5 +1,5 @@
 """
-app.db
+app.db.__init__
 ~~~~~~
 
 MongoDB 异步连接管理。
@@ -13,7 +13,7 @@ from urllib.parse import urlparse, urlunparse
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
-from app.core.config import settings
+from app.core.settings import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

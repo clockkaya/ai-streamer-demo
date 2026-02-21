@@ -57,6 +57,13 @@
             margin-right: 5px;
         }
 
+        #persona-select {
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            margin-right: 5px;
+        }
+
         button {
             padding: 10px 20px;
             background-color: #4CAF50;
@@ -86,6 +93,10 @@
 
     <div class="controls">
         <input type="text" id="room-input" value="star" placeholder="房间 ID">
+        <select id="persona-select">
+            <option value="bot_star">bot_star (星瞳)</option>
+            <option value="bot_tech">bot_tech (极客老王)</option>
+        </select>
         <button id="connect-btn" onclick="connectRoom()">加入房间</button>
         <span id="status">未连接</span>
     </div>
@@ -106,15 +117,16 @@
 
         function connectRoom() {
             const roomId = document.getElementById("room-input").value.trim();
+            const personaId = document.getElementById("persona-select").value;
             if (!roomId) { alert("请输入房间 ID"); return; }
 
             // 断开旧连接
             if (ws) { ws.close(); }
 
             chatBox.innerHTML = "";
-            chatBox.innerHTML += `<div class="system-msg">正在加入房间 [${roomId}]...</div>`;
+            chatBox.innerHTML += `<div class="system-msg">正在加入房间 [${roomId}] (主播: ${personaId})...</div>`;
 
-            ws = new WebSocket(`ws://localhost:8000/ws/rooms/${roomId}`);
+            ws = new WebSocket(`ws://localhost:8000/ws/rooms/${roomId}?persona_id=${personaId}`);
 
             ws.onopen = function () {
                 statusEl.textContent = `✅ 已连接房间 [${roomId}]`;
@@ -164,7 +176,10 @@
 
                 // 处理主播流式回复
                 if (!currentBotSpan) {
-                    chatBox.innerHTML += `<span class="bot-msg">🌟 星瞳: </span>`;
+                    const personaId = document.getElementById("persona-select").value;
+                    const personaName = personaId === "bot_tech" ? "极客老王" : "星瞳";
+                    const icon = personaId === "bot_tech" ? "👨‍💻" : "🌟";
+                    chatBox.innerHTML += `<span class="bot-msg">${icon} ${personaName}: </span>`;
                     currentBotSpan = document.createElement("span");
                     chatBox.appendChild(currentBotSpan);
                 }

@@ -1,19 +1,20 @@
 """
-app.core.config
+app.core.settings
 ~~~~~~~~~~~~~~~
 
 集中式配置管理，基于 pydantic-settings 自动从 ``.env`` 文件加载。
 
-支持多环境配置（dev / test / prod），加载顺序为:
-  1. 环境变量（最高优先级）
-  2. ``.env.{ENVIRONMENT}`` 环境专属文件
-  3. ``.env`` 基础文件
-  4. 字段默认值（最低优先级）
+支持多环境配置（dev / test / prod），加载优先级（从低到高）为:
+  1. 字段默认值（最低优先级）
+  2. ``.env`` 基础文件
+  3. ``.env.{ENVIRONMENT}`` 环境专属文件（覆盖基础配置）
+  4. 环境变量（最高优先级，覆盖一切）
 """
 from __future__ import annotations
 
 import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
@@ -21,6 +22,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 读取当前环境标识（在 Settings 类定义之前，用于决定加载哪个 .env 文件）
 _CURRENT_ENV: str = os.getenv("ENVIRONMENT", "dev")
+
+# 项目根目录的绝对路径（config.py → core/ → app/ → project root）
+PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent.parent
 
 
 class Settings(BaseSettings):
@@ -51,16 +55,18 @@ class Settings(BaseSettings):
         description="Embedding 向量维度",
     )
 
-    # ── TTS ────────────────────────────────────────────────────────────
-    TTS_VOICE: str = Field(
-        default="zh-CN-XiaoyiNeural",
-        description="Edge-TTS 语音模型",
-    )
-
     # ── RAG / 数据 ────────────────────────────────────────────────────
-    KNOWLEDGE_FILE: str = Field(
-        default="data/knowledge.txt",
-        description="知识库文本文件的相对路径（相对项目根目录）",
+    RAG_CHUNK_SIZE: int = Field(
+        default=256,
+        description="滑动窗口分段：每段最大字符数",
+    )
+    RAG_CHUNK_OVERLAP: int = Field(
+        default=64,
+        description="滑动窗口分段：相邻段重叠字符数",
+    )
+    RAG_DISTANCE_THRESHOLD: float = Field(
+        default=1.5,
+        description="L2 距离阈值，超过则视为不命中",
     )
 
     # ── MongoDB ───────────────────────────────────────────────────────
@@ -80,15 +86,18 @@ class Settings(BaseSettings):
     # ── 服务 ──────────────────────────────────────────────────────────
     HOST: str = Field(default="0.0.0.0", description="服务监听地址")
     PORT: int = Field(default=8000, description="服务监听端口")
-    LOG_LEVEL: str = Field(default="INFO", description="日志级别（可被环境属性覆盖）")
+    LOG_LEVEL: str | None = Field(
+        default=None,
+        description="日志级别。为 None 时根据 ENVIRONMENT 自动推断",
+    )
 
     # ── Pydantic Settings ─────────────────────────────────────────────
     # pydantic-settings v2: 元组中靠后的文件优先级更高
-    # 使用绝对路径，确保无论在哪个目录启动都能找到 .env
+    # 使用绝对路径（基于 PROJECT_ROOT），确保无论从哪个目录启动都能找到 .env
     model_config = SettingsConfigDict(
         env_file=(
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env"),
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), f".env.{_CURRENT_ENV}"),
+            str(PROJECT_ROOT / ".env"),
+            str(PROJECT_ROOT / f".env.{_CURRENT_ENV}"),
         ),
         env_file_encoding="utf-8",
         extra="ignore",
@@ -127,21 +136,19 @@ class Settings(BaseSettings):
     def effective_log_level(self) -> str:
         """根据环境自动推断日志级别。
 
-        - dev  → DEBUG（方便调试）
+        - dev  → INFO（日常开发信息）
         - test → DEBUG（方便排查测试失败）
         - prod → WARNING（减少噪音）
 
-        如果 .env 中显式设置了 LOG_LEVEL，会覆盖此默认推断。
+        如果在任何层级（环境变量 / .env 文件）显式设置了 LOG_LEVEL，会覆盖此默认推断。
         """
-        # 如果用户未在环境变量中显式设置 LOG_LEVEL，使用环境推断值
-        env_log = os.getenv("LOG_LEVEL")
-        if env_log:
-            return env_log
+        if self.LOG_LEVEL is not None:
+            return self.LOG_LEVEL
         return {
             "dev": "INFO",
             "test": "DEBUG",
             "prod": "WARNING",
-        }.get(self.ENVIRONMENT, "INFO")
+        }[self.ENVIRONMENT]
 
     @property
     def allow_cors_all_origins(self) -> bool:

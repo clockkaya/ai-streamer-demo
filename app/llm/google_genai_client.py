@@ -1,5 +1,5 @@
 """
-app.llm.client
+app.llm.google_genai_client
 ~~~~~~~~~~~~~~
 
 Gemini API 客户端工厂 —— 全局共享的客户端创建入口。
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from google import genai
 
-from app.core.config import settings
+from app.core.settings import settings
 
 
 def create_gemini_client() -> genai.Client:

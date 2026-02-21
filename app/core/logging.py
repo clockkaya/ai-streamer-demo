@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import sys
 
-from app.core.config import settings
+from app.core.settings import settings
 
 # 日志格式：时间 | 级别 | 模块名 | 消息
 _LOG_FORMAT: str = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"

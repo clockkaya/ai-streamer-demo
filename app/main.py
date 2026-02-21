@@ -13,11 +13,11 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import room, ws
-from app.core.config import settings
+from app.api import live_endpoints, live_stream_ws
+from app.core.settings import settings
 from app.core.logging import get_logger, setup_logging
 from app.db import close_mongo, connect_mongo
-from app.schemas.response import ApiResponse
+from app.schemas.api_response import ApiResponse
 
 # 初始化日志系统（必须在其他模块之前）
 setup_logging()
@@ -73,8 +73,8 @@ else:
     )
 
 # ── 路由挂载 ──────────────────────────────────────────────────────────
-app.include_router(room.router, prefix="/api", tags=["Room & Danmaku"])
-app.include_router(ws.router, tags=["WebSocket Live"])
+app.include_router(live_endpoints.router, prefix="/api", tags=["Room & Danmaku"])
+app.include_router(live_stream_ws.router, tags=["WebSocket Live"])
 
 
 # ── 全局异常处理器 ────────────────────────────────────────────────────

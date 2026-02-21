@@ -1,5 +1,5 @@
 """
-app.tts.engine
+app.tts.edge_tts_provider
 ~~~~~~~~~~~~~~
 
 基于 Edge-TTS 的语音合成引擎。
@@ -13,13 +13,18 @@ import base64
 
 import edge_tts
 
-from app.core.config import settings
+from app.core.settings import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-async def generate_audio_base64(text: str) -> str:
+async def generate_audio_base64(
+    text: str, 
+    voice: str | None = None,
+    rate: str = "+0%",
+    pitch: str = "0Hz",
+) -> str:
     """将文本转换为音频并返回 Base64 编码字符串。
 
     使用 Edge-TTS 异步流式获取音频字节，完成后编码为 Base64。
@@ -27,12 +32,16 @@ async def generate_audio_base64(text: str) -> str:
 
     Args:
         text: 待合成的文本内容。
+        voice: 发音人（如为空则默认使用 "zh-CN-XiaoyiNeural"）。
+        rate: 语速调节（如 "+10%"）。
+        pitch: 音调调节（如 "+5Hz"）。
 
     Returns:
         MP3 音频的 Base64 字符串。合成失败时返回空字符串。
     """
     try:
-        communicate = edge_tts.Communicate(text, settings.TTS_VOICE)
+        target_voice = voice or "zh-CN-XiaoyiNeural"
+        communicate = edge_tts.Communicate(text, target_voice, rate=rate, pitch=pitch)
 
         # 流式接收音频块，拼接到内存缓冲区
         audio_data = bytearray()
