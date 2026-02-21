@@ -16,5 +16,11 @@ __pycache__/
 .vscode/
 
 # 数据和构建产物
-data/*.txt
 *.tar
+tests_output*.txt
+pytest_*.log
+
+# 忽略所有角色的本地专属知识库文件（保证仓库纯净）
+data/personas/*/knowledge/*
+# 保留 knowledge 目录本身的结构占位
+!data/personas/*/knowledge/.gitkeep
