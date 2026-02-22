@@ -14,6 +14,7 @@ import random
 
 from google import genai
 from google.genai import types
+from google.genai import errors
 
 from app.core.settings import settings
 from app.core.logging import get_logger
@@ -53,6 +54,7 @@ class GeminiProvider:
             "主播正在思考中...",
             "哎呀，直播间线路好像卡了一下，等我一下~",
         ]
+        self.rate_limit_response: str = "呼~ 刚才太多小伙伴在跟我互动啦，稍微让我喘口气，马上回来哦~"
 
         # 转换通用的历史记录结构为其 SDK 所需的类型
         gemini_history: list[types.Content] = []
@@ -93,8 +95,14 @@ class GeminiProvider:
         try:
             response = await self.chat_session.send_message(prompt)
             return response.text
+        except errors.APIError as e:
+            if e.code == 429 or "429" in str(e):
+                logger.warning("LLM API 触发频率限制 (429): %s", e)
+                return self.rate_limit_response
+            logger.error("LLM 调用 API 异常: %s", e, exc_info=True)
+            return random.choice(self.fallback_responses)
         except Exception as e:
-            logger.error("LLM 调用异常: %s", e, exc_info=True)
+            logger.error("LLM 调用未知异常: %s", e, exc_info=True)
             return random.choice(self.fallback_responses)
 
     async def generate_reply_stream(self, prompt: str) -> AsyncGenerator[str, None]:
@@ -113,8 +121,17 @@ class GeminiProvider:
                     # 逐字 yield，实现打字机效果
                     for char in chunk.text:
                         yield char
+        except errors.APIError as e:
+            if e.code == 429 or "429" in str(e):
+                logger.warning("LLM 流式调用触发频率限制 (429): %s", e)
+                fallback = self.rate_limit_response
+            else:
+                logger.error("LLM 流式调用 API 异常: %s", e, exc_info=True)
+                fallback = random.choice(self.fallback_responses)
+            for char in fallback:
+                yield char
         except Exception as e:
-            logger.error("LLM 流式调用异常: %s", e, exc_info=True)
+            logger.error("LLM 流式调用未知异常: %s", e, exc_info=True)
             fallback = random.choice(self.fallback_responses)
             for char in fallback:
                 yield char

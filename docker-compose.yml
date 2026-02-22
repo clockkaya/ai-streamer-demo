@@ -1,56 +1,56 @@
 # ============================================================================
-#  docker-compose.yml (v1.2)
-#
-#  架构说明:
-#    - 仅部署 ai-streamer 核心服务容器
-#    - 数据库依赖宿主机上已经运行的 `my_mongodb` 容器 (映射在宿主机 27017 端口)
-#    - 通过 host.docker.internal 实现在容器内穿透访问宿主机数据库
+# Docker Compose Root Configuration
 # ============================================================================
 
 services:
-  ai-streamer:
-    image: ai-streamer:v1.2
+  backend:
+    image: ai-streamer-backend:v1.3
     build:
-      context: .
+      context: ./backend
       args:
         APP_PORT: ${PORT:-8000}
-    container_name: ai-streamer-v1.2
-
-    # 包含 API KEY 和基础环境标志
+    container_name: ai-streamer-backend
     env_file:
-      - .env
-
+      - ./backend/.env
     environment:
+      # 设置时区
+      - TZ=Asia/Shanghai
       # 如果在国内需要代理，请去掉注释并修改代理地址
       # - HTTP_PROXY=http://host.docker.internal:7890
       # - HTTPS_PROXY=http://host.docker.internal:7890
       
-      # ⚠️ 关键：指向刚才你提供的、已经在宿主机运行的 my_mongodb，使用 host.docker.internal
-      - MONGO_URI=mongodb://<usernamae>:<password>@host.docker.internal:27017/?authSource=admin
-
+      # 指向宿主机运行的 my_mongodb
+      - MONGO_URI=mongodb://<username>:<password>@host.docker.internal:27017/?authSource=admin
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
-
-    # 允许容器访问宿主机网络
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
     volumes:
-      - ./data:/app/data:ro
-
-    # 健康检查，确保 FastAPI 正常运行
+      - ./backend/data:/app/data:ro
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:${PORT:-8000}/health\")' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
-
     restart: unless-stopped
-    
-    # 日志轮转，避免日志文件过大
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+  frontend:
+    image: ai-streamer-frontend:v1.3
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: v1.3
+    container_name: ai-streamer-frontend
+    environment:
+      # 设置时区
+      - TZ=Asia/Shanghai
+    ports:
+      - "3000:80"
+    restart: unless-stopped

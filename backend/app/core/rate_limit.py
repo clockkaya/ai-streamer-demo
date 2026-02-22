@@ -11,12 +11,34 @@ from fastapi import Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+import threading
+from collections import Counter, defaultdict
+from limits.storage.memory import MemoryStorage
+from limits.storage.base import Storage
+
+class SafeMemoryStorage(MemoryStorage):
+    """
+    延迟启动 timer 线程的内存存储后端。
+    解决在 Windows 系统中 uvicorn --reload 模式下由于 multiprocessing.spawn 阶段启动线程导致的 hang/死锁问题。
+    """
+    STORAGE_SCHEME = ["safe-memory"]
+
+    def __init__(self, uri: str | None = None, wrap_exceptions: bool = False, **kwargs: str):
+        # 初始化需要的字典，但不在这里调用 self.timer.start()
+        self.storage = Counter()
+        self.locks = defaultdict(threading.RLock)
+        self.expirations = {}
+        self.events = {}
+        self.timer = threading.Timer(0.01, self._MemoryStorage__expire_events)
+        Storage.__init__(self, uri, wrap_exceptions=wrap_exceptions, **kwargs)
+
+
 # --------- HTTP 接口限流器 ---------
 # 基于客户端 IP 地址进行限流
-# 💡 显式指定 "memory://" 存储方案，避免在 Windows 系统的 reload 模式下因自动探测引起的线程死锁或响应缓慢。
+# 💡 使用自定义延迟线程的 "safe-memory://" 存储方案，避免在 Windows 系统的 reload 模式下因自动探测引起的线程死锁。
 limiter = Limiter(
     key_func=get_remote_address,
-    storage_uri="memory://",
+    storage_uri="safe-memory://",
 )
 
 

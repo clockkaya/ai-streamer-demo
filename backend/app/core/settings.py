@@ -43,7 +43,7 @@ class Settings(BaseSettings):
 
     # ── LLM ───────────────────────────────────────────────────────────
     GEMINI_MODEL: str = Field(
-        default="gemini-2.5-flash",
+        default="gemini-2.5-flash-lite",
         description="Gemini 聊天模型名称",
     )
     EMBEDDING_MODEL: str = Field(
@@ -93,6 +93,16 @@ class Settings(BaseSettings):
     WS_RATE_LIMIT_INTERVAL: float = Field(
         default=2.0,
         description="WebSocket 单个连接发送弹幕的限流间隔（秒）",
+    )
+
+    # ── 代理设置 ──────────────────────────────────────────────────────
+    HTTP_PROXY: str | None = Field(
+        default=None,
+        description="HTTP 代理地址（用于请求外部服务避开封锁，如 TTS）",
+    )
+    HTTPS_PROXY: str | None = Field(
+        default=None,
+        description="HTTPS 代理地址",
     )
 
     # ── Pydantic Settings ─────────────────────────────────────────────

@@ -1,0 +1,10 @@
+/* 引入 Tailwind CSS v4 */
+@import "tailwindcss";
+
+/* 以前写在 tailwind.config.js 里的自定义配置，现在用 @theme 指令写在 CSS 里（目前留空备用即可） */
+@theme {}
+
+/* 直播间的全局基础样式 */
+body {
+  @apply bg-gray-900 text-white m-0 p-0 h-screen overflow-hidden;
+}

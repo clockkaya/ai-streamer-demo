@@ -41,7 +41,17 @@ async def generate_audio_base64(
     """
     try:
         target_voice = voice or "zh-CN-XiaoyiNeural"
-        communicate = edge_tts.Communicate(text, target_voice, rate=rate, pitch=pitch)
+        
+        # 优先使用 HTTPS_PROXY，降级到 HTTP_PROXY
+        proxy = settings.HTTPS_PROXY or settings.HTTP_PROXY
+        
+        communicate = edge_tts.Communicate(
+            text, 
+            target_voice, 
+            rate=rate, 
+            pitch=pitch,
+            proxy=proxy
+        )
 
         # 流式接收音频块，拼接到内存缓冲区
         audio_data = bytearray()
