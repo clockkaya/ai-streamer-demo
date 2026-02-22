@@ -136,3 +136,8 @@ class ChatRepository:
             .limit(limit)
         )
         return await cursor.to_list(length=limit)
+
+    async def count_messages(self, room_id: str) -> int:
+        """获取指定房间的消息总数。"""
+        await self._ensure_indexes()
+        return await self._collection.count_documents({"room_id": room_id})

@@ -1,5 +1,5 @@
 """
-app.llm.google_genai_client
+app.llm.client
 ~~~~~~~~~~~~~~
 
 Gemini API 客户端工厂 —— 全局共享的客户端创建入口。

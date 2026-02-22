@@ -49,7 +49,7 @@ class BotContext:
 
     async def handle_message(self, user_message: str) -> str:
         """处理观众弹幕并返回完整回复（非流式）。"""
-        final_prompt: str = self._build_prompt(user_message)
+        final_prompt: str = await self._build_prompt(user_message)
         reply: str = await self.bot.generate_reply(final_prompt)
 
         # 持久化对话记录
@@ -61,7 +61,7 @@ class BotContext:
         self, user_message: str,
     ) -> AsyncGenerator[str, None]:
         """处理观众弹幕并以流式方式逐字返回回复。"""
-        final_prompt: str = self._build_prompt(user_message)
+        final_prompt: str = await self._build_prompt(user_message)
         full_reply: str = ""
         async for char in self.bot.generate_reply_stream(final_prompt):
             full_reply += char
@@ -70,9 +70,9 @@ class BotContext:
         # 流式结束后持久化
         await self._persist(user_message, full_reply)
 
-    def _build_prompt(self, user_message: str) -> str:
+    async def _build_prompt(self, user_message: str) -> str:
         """执行 RAG 检索并组装最终 Prompt。"""
-        reference_knowledge: str = self.rag.search(user_message, top_k=self.persona.rag.search_top_k)
+        reference_knowledge: str = await self.rag.search(user_message, top_k=self.persona.rag.search_top_k)
         if reference_knowledge:
             logger.info("RAG 命中: %s", reference_knowledge[:80].replace("\n", " "))
             return (

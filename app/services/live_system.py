@@ -8,31 +8,18 @@ app.services.live_system
 """
 from __future__ import annotations
 
-from google.genai import types
-
-from app.core.settings import settings
 from app.core.logging import get_logger
+from app.core.persona import PersonaManager
+from app.core.settings import settings
 from app.db import get_database
 from app.db.chat_repository import ChatRepository
 from app.llm.gemini_provider import GeminiProvider
-from app.core.persona import get_persona_manager, PersonaManager
-from app.services.live_room import LiveRoom
+from app.schemas.live_interactions import RoomInfoData
 from app.services.bot_context import BotContext
+from app.services.live_room import LiveRoom
 
 logger = get_logger(__name__)
 
-
-def _messages_to_history(messages: list[dict]) -> list[types.Content]:
-    """将 MongoDB 消息记录转换为 Gemini Content 对象列表。"""
-    history: list[types.Content] = []
-    for msg in messages:
-        history.append(
-            types.Content(
-                role=msg["role"],
-                parts=[types.Part.from_text(text=msg["content"])],
-            ),
-        )
-    return history
 
 
 class LiveSystem:
@@ -49,8 +36,8 @@ class LiveSystem:
         pm: 角色包管理器。
     """
 
-    def __init__(self) -> None:
-        self.pm: PersonaManager = get_persona_manager()
+    def __init__(self, pm: PersonaManager) -> None:
+        self.pm: PersonaManager = pm
         self.repo: ChatRepository = ChatRepository(get_database())
         self._rooms: dict[str, LiveRoom] = {}
 
@@ -65,11 +52,12 @@ class LiveSystem:
             messages = await self.repo.get_history(
                 room_id, limit=settings.CHAT_HISTORY_LIMIT,
             )
-            history = _messages_to_history(messages)
+            history_dicts = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
 
             bot = GeminiProvider(
                 system_prompt=bundle.config.system_prompt,
-                history=history if history else None,
+                fallback_responses=bundle.config.fallback_responses,
+                history=history_dicts if history_dicts else None,
             )
             context = BotContext(
                 persona=bundle.config,
@@ -85,7 +73,7 @@ class LiveSystem:
             )
         return self._rooms[room_id]
 
-    def list_rooms(self) -> list[dict]:
+    def list_rooms(self) -> list[RoomInfoData]:
         """列出所有活跃房间的摘要信息。"""
         return [room.info() for room in self._rooms.values()]
 
@@ -96,24 +84,9 @@ class LiveSystem:
         
         session_bot: GeminiProvider = bot or GeminiProvider(
             system_prompt=bundle.config.system_prompt,
+            fallback_responses=bundle.config.fallback_responses,
         )
         return BotContext(persona=bundle.config, rag=bundle.rag, bot=session_bot)
 
 
-# ---------------------------------------------------------------------------
-# 懒初始化单例
-# ---------------------------------------------------------------------------
-_live_system: LiveSystem | None = None
-
-
-def get_live_system() -> LiveSystem:
-    """获取全局 LiveSystem 单例（懒初始化）。
-    
-    注意：LiveSystem 初始化时会调用 get_database()，
-    因此必须在应用生命周期（lifespan）成功执行 connect_mongo() 之后调用此方法，
-    否则会抛出 MongoDB 未初始化的 RuntimeError 异常。
-    """
-    global _live_system
-    if _live_system is None:
-        _live_system = LiveSystem()
-    return _live_system
+# 移除了全局单例，改为在 FastAPI lifespan 中初始化并挂载于 app.state

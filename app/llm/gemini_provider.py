@@ -10,16 +10,16 @@ app.llm.gemini_provider
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+import random
 
 from google import genai
 from google.genai import types
 
 from app.core.settings import settings
 from app.core.logging import get_logger
-from app.llm.google_genai_client import create_gemini_client
+from app.llm.client import create_gemini_client
 
 logger = get_logger(__name__)
-
 
 class GeminiProvider:
     """Gemini 聊天机器人封装，持有一个异步聊天 Session。
@@ -32,21 +32,38 @@ class GeminiProvider:
     def __init__(
         self,
         system_prompt: str,
+        fallback_responses: list[str] | None = None,
         model_name: str | None = None,
         client: genai.Client | None = None,
-        history: list[types.Content] | None = None,
+        history: list[dict] | None = None,
     ) -> None:
         """初始化聊天机器人。
 
         Args:
             system_prompt: 系统 Prompt，定义 AI 人设和行为规则。
+            fallback_responses: 大模型调用失败时的兜底回复列表。
             model_name: Gemini 模型名称，默认读取 ``settings.GEMINI_MODEL``。
             client: 可选的 ``genai.Client`` 实例（用于测试注入 mock）。
-            history: 可选的对话历史，用于恢复之前的对话上下文。
+            history: 可选的对话历史（使用通用 dict 格式），用于恢复之前的对话上下文。
         """
         self.model_name: str = model_name or settings.GEMINI_MODEL
         self.system_prompt: str = system_prompt
         self._client: genai.Client = client or create_gemini_client()
+        self.fallback_responses: list[str] = fallback_responses or [
+            "主播正在思考中...",
+            "哎呀，直播间线路好像卡了一下，等我一下~",
+        ]
+
+        # 转换通用的历史记录结构为其 SDK 所需的类型
+        gemini_history: list[types.Content] = []
+        if history:
+            for msg in history:
+                gemini_history.append(
+                    types.Content(
+                        role=msg["role"],
+                        parts=[types.Part.from_text(text=msg["content"])],
+                    )
+                )
 
         # 创建异步聊天 Session，注入 system_prompt 和可选的对话历史
         self.chat_session = self._client.aio.chats.create(
@@ -54,7 +71,7 @@ class GeminiProvider:
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
             ),
-            history=history or [],
+            history=gemini_history,
         )
         if history:
             logger.info(
@@ -78,7 +95,7 @@ class GeminiProvider:
             return response.text
         except Exception as e:
             logger.error("LLM 调用异常: %s", e, exc_info=True)
-            return f"哎呀，直播间线路好像卡了一下... (错误信息: {e!s})"
+            return random.choice(self.fallback_responses)
 
     async def generate_reply_stream(self, prompt: str) -> AsyncGenerator[str, None]:
         """发送消息并以异步生成器逐字返回回复（流式）。
@@ -98,4 +115,6 @@ class GeminiProvider:
                         yield char
         except Exception as e:
             logger.error("LLM 流式调用异常: %s", e, exc_info=True)
-            yield f"哎呀，直播间线路好像卡了一下... (错误信息: {e!s})"
+            fallback = random.choice(self.fallback_responses)
+            for char in fallback:
+                yield char

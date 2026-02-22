@@ -1,5 +1,5 @@
 # ============================================================================
-#  docker-compose.yml (v1.1)
+#  docker-compose.yml (v1.2)
 #
 #  架构说明:
 #    - 仅部署 ai-streamer 核心服务容器
@@ -9,12 +9,12 @@
 
 services:
   ai-streamer:
-    image: ai-streamer:v1.1
+    image: ai-streamer:v1.2
     build:
       context: .
       args:
         APP_PORT: ${PORT:-8000}
-    container_name: ai-streamer-v1.1
+    container_name: ai-streamer-v1.2
 
     # 包含 API KEY 和基础环境标志
     env_file:

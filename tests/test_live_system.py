@@ -38,7 +38,7 @@ class TestBotContext:
     async def test_handle_message_with_rag_hit(self) -> None:
         """RAG 命中时，LLM 收到的 prompt 应包含背景知识。"""
         mock_rag = MagicMock()
-        mock_rag.search.return_value = "星瞳最害怕青椒"
+        mock_rag.search = AsyncMock(return_value="星瞳最害怕青椒")
 
         mock_bot = MagicMock()
         mock_bot.generate_reply = AsyncMock(return_value="才不怕呢！哼！")
@@ -56,7 +56,7 @@ class TestBotContext:
     async def test_handle_message_without_rag_hit(self) -> None:
         """RAG 未命中时，LLM 收到的 prompt 应为原始用户消息。"""
         mock_rag = MagicMock()
-        mock_rag.search.return_value = ""
+        mock_rag.search = AsyncMock(return_value="")
 
         mock_bot = MagicMock()
         mock_bot.generate_reply = AsyncMock(return_value="你好呀家人们～")
@@ -72,7 +72,7 @@ class TestBotContext:
     async def test_handle_message_stream(self) -> None:
         """流式处理应逐字返回完整回复。"""
         mock_rag = MagicMock()
-        mock_rag.search.return_value = ""
+        mock_rag.search = AsyncMock(return_value="")
 
         async def fake_stream(prompt: str) -> AsyncGenerator[str, None]:
             for char in "你好喵":
@@ -93,7 +93,7 @@ class TestBotContext:
     async def test_handle_message_persists_to_repo(self) -> None:
         """有 repo 时，handle_message 应保存 user + model 消息。"""
         mock_rag = MagicMock()
-        mock_rag.search.return_value = ""
+        mock_rag.search = AsyncMock(return_value="")
         mock_bot = MagicMock()
         mock_bot.generate_reply = AsyncMock(return_value="喵~")
 

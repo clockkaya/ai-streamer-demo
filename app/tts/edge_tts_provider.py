@@ -46,7 +46,7 @@ async def generate_audio_base64(
         # 流式接收音频块，拼接到内存缓冲区
         audio_data = bytearray()
         async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
+            if chunk.get("type") == "audio" and "data" in chunk:
                 audio_data.extend(chunk["data"])
 
         base64_audio: str = base64.b64encode(audio_data).decode("utf-8")

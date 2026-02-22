@@ -90,6 +90,10 @@ class Settings(BaseSettings):
         default=None,
         description="日志级别。为 None 时根据 ENVIRONMENT 自动推断",
     )
+    WS_RATE_LIMIT_INTERVAL: float = Field(
+        default=2.0,
+        description="WebSocket 单个连接发送弹幕的限流间隔（秒）",
+    )
 
     # ── Pydantic Settings ─────────────────────────────────────────────
     # pydantic-settings v2: 元组中靠后的文件优先级更高

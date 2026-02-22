@@ -9,14 +9,25 @@ app.core.logging
 """
 from __future__ import annotations
 
+import contextvars
 import logging
 import sys
 
 from app.core.settings import settings
 
-# 日志格式：时间 | 级别 | 模块名 | 消息
-_LOG_FORMAT: str = "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
+request_id_ctx_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
+
+# 日志格式：时间 | 级别 | 请求ID | 模块名 | 消息
+_LOG_FORMAT: str = "%(asctime)s | %(levelname)-7s | [%(request_id)s] | %(name)s | %(message)s"
 _DATE_FORMAT: str = "%Y-%m-%d %H:%M:%S"
+
+
+class RequestIdFilter(logging.Filter):
+    """注入 request_id 到日志记录。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.request_id = request_id_ctx_var.get()
+        return True
 
 
 def setup_logging() -> None:
@@ -30,6 +41,11 @@ def setup_logging() -> None:
         stream=sys.stdout,
         force=True,  # 覆盖可能已有的 basicConfig
     )
+
+    # 注入 request_id 过滤器到所有 root handlers
+    request_id_filter = RequestIdFilter()
+    for handler in logging.root.handlers:
+        handler.addFilter(request_id_filter)
 
     # 降低第三方库的日志噪音
     logging.getLogger("httpcore").setLevel(logging.WARNING)

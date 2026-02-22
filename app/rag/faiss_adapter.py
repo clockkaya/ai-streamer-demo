@@ -17,7 +17,7 @@ from google import genai
 
 from app.core.settings import settings
 from app.core.logging import get_logger
-from app.llm.google_genai_client import create_gemini_client
+from app.llm.client import create_gemini_client
 from app.rag.text_chunker import SlidingWindowChunker
 from app.rag.document_loader import KnowledgeLoader
 
@@ -69,12 +69,8 @@ class FAISSAdapter:
         )
         self._loader: KnowledgeLoader = KnowledgeLoader()
 
-    def _get_embedding(self, text: str) -> list[float]:
-        """调用 Gemini Embedding API 将文本转换为向量。
-
-        注意：此处暂使用生成式 API 的同步客户端。
-        因为这是一个网络 I/O 操作，在高并发情况下可能会阻塞 AsyncIO 事件循环。
-        后续优化建议考虑替换为异步客户端 `self._client.aio.models.embed_content`。
+    async def _get_embedding(self, text: str) -> list[float]:
+        """调用 Gemini Embedding API 将文本转换为向量 (非阻塞)。
 
         Args:
             text: 待向量化的文本。
@@ -82,13 +78,13 @@ class FAISSAdapter:
         Returns:
             浮点数列表，长度等于 ``self.dimension``。
         """
-        result = self._client.models.embed_content(
+        result = await self._client.aio.models.embed_content(
             model=settings.EMBEDDING_MODEL,
             contents=text,
         )
         return result.embeddings[0].values
 
-    def _add_text(self, text: str) -> int:
+    async def _add_text(self, text: str) -> int:
         """将纯文本经分段、向量化后添加到 FAISS 索引。
 
         Args:
@@ -104,13 +100,13 @@ class FAISSAdapter:
         embeddings: list[list[float]] = []
         for chunk in new_chunks:
             self.chunks.append(chunk)
-            embeddings.append(self._get_embedding(chunk))
+            embeddings.append(await self._get_embedding(chunk))
 
         emb_matrix: np.ndarray = np.array(embeddings, dtype=np.float32)
         self.index.add(emb_matrix)
         return len(new_chunks)
 
-    def load_corpus(self, file_path: str) -> None:
+    async def load_corpus(self, file_path: str) -> None:
         """从文件加载知识库，使用滑动窗口分段后逐段嵌入并添加到 FAISS 索引。
 
         支持 ``.txt`` / ``.md`` / ``.json`` 格式。
@@ -122,10 +118,10 @@ class FAISSAdapter:
         if not text:
             return
 
-        count: int = self._add_text(text)
+        count: int = await self._add_text(text)
         logger.info("RAG 知识库加载完成 [%s]，共入库 %d 条设定", file_path, count)
 
-    def load_directory(self, dir_path: str) -> None:
+    async def load_directory(self, dir_path: str) -> None:
         """从目录递归加载所有支持格式的知识库文件。
 
         Args:
@@ -134,13 +130,13 @@ class FAISSAdapter:
         file_texts: list[tuple[str, str]] = self._loader.load_directory(dir_path)
         total: int = 0
         for file_path, text in file_texts:
-            count: int = self._add_text(text)
+            count: int = await self._add_text(text)
             logger.debug("  加载文件 %s → %d 条", file_path, count)
             total += count
 
         logger.info("RAG 目录加载完成 [%s]，共入库 %d 条设定", dir_path, total)
 
-    def search(self, query: str, top_k: int = 1) -> str:
+    async def search(self, query: str, top_k: int = 1) -> str:
         """检索与查询最相似的知识片段。
 
         使用 L2 距离阈值过滤：距离超过 ``distance_threshold`` 的结果被视为不命中。
@@ -156,8 +152,9 @@ class FAISSAdapter:
             return ""
 
         # 将查询文本向量化，然后在 FAISS 索引中做近邻搜索
+        embedding = await self._get_embedding(query)
         q_emb: np.ndarray = np.array(
-            [self._get_embedding(query)], dtype=np.float32,
+            [embedding], dtype=np.float32,
         )
         distances, indices = self.index.search(q_emb, top_k)
 

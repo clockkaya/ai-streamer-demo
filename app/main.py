@@ -12,12 +12,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+import uuid
 
 from app.api import live_endpoints, live_stream_ws
 from app.core.settings import settings
-from app.core.logging import get_logger, setup_logging
+from app.core.logging import get_logger, setup_logging, request_id_ctx_var
+from app.core.rate_limit import limiter
 from app.db import close_mongo, connect_mongo
 from app.schemas.api_response import ApiResponse
+from app.core.persona import PersonaManager
+from app.services.live_system import LiveSystem
 
 # 初始化日志系统（必须在其他模块之前）
 setup_logging()
@@ -30,17 +36,26 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期钩子，仅在 worker 启动/关闭时各执行一次。"""
     # ── 启动 ──
-    await connect_mongo()
-    logger.info(
-        "🚀 应用已启动 | env=%s | debug=%s | log_level=%s",
-        settings.ENVIRONMENT,
-        settings.debug,
-        settings.effective_log_level,
-    )
-    yield
-    # ── 关闭 ──
-    await close_mongo()
-    logger.info("👋 应用已关闭")
+    try:
+        await connect_mongo()
+        
+        # 初始化并在应用状态上挂载全局服务
+        pm = PersonaManager()
+        await pm.load_all()
+        app.state.persona_manager = pm
+        app.state.live_system = LiveSystem(pm=pm)
+        
+        logger.info(
+            "🚀 应用已启动 | env=%s | debug=%s | log_level=%s",
+            settings.ENVIRONMENT,
+            settings.debug,
+            settings.effective_log_level,
+        )
+        yield
+    finally:
+        # ── 关闭 ──
+        await close_mongo()
+        logger.info("👋 应用已关闭")
 
 
 # ── 创建 FastAPI 实例 ─────────────────────────────────────────────────
@@ -52,6 +67,22 @@ app: FastAPI = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+# 挂载限流器及限流异常处理器
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# ── HTTP Request ID 中间件 ──────────────────────────────────────────
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    req_id = uuid.uuid4().hex
+    token = request_id_ctx_var.set(req_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = req_id
+        return response
+    finally:
+        request_id_ctx_var.reset(token)
 
 # ── CORS 中间件（中间件注册必须在模块顶层，但不需要打日志）──────────
 if settings.allow_cors_all_origins:
