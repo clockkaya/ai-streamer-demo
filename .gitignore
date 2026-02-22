@@ -1,26 +1,56 @@
+# ====================
+# 通用/系统配置
+# ====================
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# 日志文件
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+tests_output*.txt
+pytest_*.log
+
+# ====================
+# 后端 (Python/FastAPI)
+# ====================
 # 环境变量文件（.env.example 用于团队参考，需提交）
 .env
 .env.*
 !.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
 
-# Python
 venv/
 .venv/
 __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
-
-# IDE
-.idea/
-.vscode/
-
-# 数据和构建产物
 *.tar
-tests_output*.txt
-pytest_*.log
 
 # 忽略所有角色的本地专属知识库文件（保证仓库纯净）
-data/personas/*/knowledge/*
+backend/data/personas/*/knowledge/*
 # 保留 knowledge 目录本身的结构占位
-!data/personas/*/knowledge/.gitkeep
+!backend/data/personas/*/knowledge/.gitkeep
+
+# ====================
+# 前端 (Node/React/TypeScript)
+# ====================
+node_modules/
+frontend/node_modules/
+dist/
+dist-ssr/
+*.local

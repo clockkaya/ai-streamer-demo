@@ -1,7 +1,9 @@
-# 🎙️ AI-Streamer-Demo: 智能虚拟主播后端核心
+# 🎙️ AI-Streamer-Demo: 智能虚拟主播全栈系统
 
 <div align="center">
 
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?logo=typescript)
+![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react)
 ![Python](https://img.shields.io/badge/Python-3.12%2B-blue?logo=python)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi)
 ![MongoDB](https://img.shields.io/badge/MongoDB-7.0%2B-47A248?logo=mongodb)
@@ -9,126 +11,137 @@
 
 </div>
 
-这是一个基于 Google Gemini 大模型开发的轻量级虚拟主播后端 Demo。本项目集成了 **RAG（检索增强生成）**、**实时 WebSocket 流式交互** 及 **TTS（语音合成）** 技术，旨在模拟真实的直播间互动场景。
+本项目是一个基于 **Monorepo** 架构的现代化全栈 AI 实时流媒体应用，包含独立的前端应用 (React + TypeScript) 和核心后端服务 (FastAPI + Python)。这是一个基于 Google Gemini 大模型开发的轻量级虚拟主播系统，集成了 RAG（检索增强生成）、实时 WebSocket 交互及 TTS 技术，旨在模拟真实的直播间互动。
 
 ---
 
-## 🌟 核心亮点
+## 🌟 核心理念与架构
 
-* **🧠 智能大脑 (LLM)**: 基于最新的 Google Gemini 2.5 系列模型，具备强大的语义理解与拟人化表达能力。
-* **📚 独家记忆 (RAG)**: 利用 FAISS 向量数据库实现本地知识库检索，有效解决大模型幻觉支持。
-* **🎭 多角色框架 (Persona Bundle)**: 内置 `PersonaManager` 引擎，所有主播（如星瞳、科技男）的人设预案、合成音色、私域知识库等通过独立的配置文件隔离管理，即插即用，扩展自如。
-* **⚡ 实时交互 (WebSocket)**: 采用异步 WebSocket 长连接，支持单房间多观众同时在线交流、弹幕广播交互，响应极速。
-* **🎙️ 灵动嗓音 (TTS)**: 集成微软 Edge-TTS 引擎，实现高质量语音实时合成，音频流直接通过 Base64 经 WebSocket 推送，无磁盘 I/O 延迟。
-* **💾 上下文记忆 (MongoDB)**: 自动持久化存储对话历史，支持按房间号隔离的断线重连与过往记忆恢复。
-* **🐳 生产就绪 (Docker)**: 提供完整的 Docker 与 Docker-Compose 日用配置，不再受困于多依赖库的环境冲突。
-* **🛡️ 强类型架构**: 采用底层强类型验证 (Pydantic)，所有核心服务均经过完整的 Adapter 代理模式抽象设计。
+本项目采用标准的大库包小库（Monorepo）结构，全局统筹 Docker 容器环境与 Git 治理，具体业务环境深度解耦：
 
-## 🛠️ 技术栈
-
-* **核心语言**: Python 3.12+
-* **Web 框架**: FastAPI (Asynchronous IO)
-* **大语言模型**: Google GenAI SDK
-* **向量数据库**: FAISS (Facebook AI Similarity Search)
-* **业务数据库**: MongoDB + Motor (异步驱动)
-* **语音合成**: Edge-TTS
-* **运维部署**: Docker / Docker-Compose
+- **全局视角**: 根目录下 `docker-compose.yml` 统一编排全量资源，一键启动整套闭环系统。
+- **frontend/**: 前端独立构建基于 Vite + React + Zustand + TailwindCSS 的响应式、可重用的视图组件与交互体系。
+- **backend/**: 后端专注于提供稳健的 LLM 数据引擎，采用多角色框架 (PersonaBundle)、FAISS RAG 向量检索与 Edge-TTS 语音实时流式合成。
 
 ---
 
-## 🚀 快速开始
+## ⚡ 核心能力
 
-### 1. 克隆仓库
+### 后端引擎 (Backend)
+- **🧠 智能大脑**: 基于最新的 Google Gemini 2.5 模型，进行极低延迟拟人化表达。
+- **📚 独家记忆**: 利用 FAISS 实现本地化的个性知识库（RAG检索），消灭幻觉并支持多主播不同人设的专属知识库。
+- **🎭 动态人设**: `PersonaManager` 支持一键插拔自定义角色的音色、背景、记忆文档。
+- **⚡ WebSocket 实时交互**: 弹幕级低延迟响应，支持多端房间消息广播及断线自动重连。
+- **🎙️ 无盘语音合成流**: 集成微软 Edge-TTS，动态合成音频流后直接 Base64 内存网络级分发，实现真正的“零落地” I/O 特性。
+- **💾 记忆沙箱**: 基于 MongoDB 实现的会话隔离、短时窗口压缩、以及过往记忆持久化。
+
+### 前端体验 (Frontend)
+- **🚄 极速构建**: 底层采用 Vite + ESBuild 的纯粹 ESM 链路开发驱动，达到秒级冷启。
+- **🌐 稳健通讯管理**: 独立封装的可靠 WebSocket Hook 体系，自动接管心跳、容错重建、以及二进制媒体帧组装还原机制。
+- **🔄 全局状态管理**: 利用 Zustand 提供单一数据源原则，确保 UI （历史弹幕、播放状态、排队策略）的高度一致性。
+- **🎨 Tailwind 现代美学**: 深度利用 TailwindCSS 进行像素级像素堆栈控制与快速的美学迭代。 
+
+---
+
+## 🚀 快速开始与一键运行
+
+> **强烈推荐** 使用根目录下的 `docker-compose.yml`。这将为您节省大量的环境配置时间。
+
+### 1. 配置必要的运行参数
+
+首先，复制后端示例环境变量以获得一套完整的运行时身份凭证配置：
+
 ```bash
-git clone https://github.com/your-username/ai-streamer-demo.git
-cd ai-streamer-demo
+cd backend
+cp .env.example .env
 ```
 
-### 2. 配置环境变量
-项目使用多环境配置策略。请复制模板文件创建你自己的本地环境配置，并填入你的 `GEMINI_API_KEY`：
-
-```bash
-cp .env.example .env.dev
-```
-
-打开 `.env.dev` 进行按需配置：
+打开 `backend/.env` 进行按需配置：
 
 ```ini
 # 必填项：凭证参数
 GEMINI_API_KEY=AIzaSy...
 
-# 可选项：如果你在本地使用科学上网代理
-HTTP_PROXY=http://127.0.0.1:7890
-HTTPS_PROXY=http://127.0.0.1:7890
+# 可选项：如果你在本地使用科学上网代理（国内访问必备）
+HTTP_PROXY=http://host.docker.internal:7890
+HTTPS_PROXY=http://host.docker.internal:7890
 
-# 可选项：本地 MongoDB 连接地址（使用 Docker 部署时可忽略此项，环境会自动桥接）
-MONGO_URI=mongodb://localhost:27017
+# 可选项：连接你宿主的 MongoDB（Docker 默认桥接配置）
+MONGO_URI=mongodb://<usernamae>:<password>@host.docker.internal:27017/?authSource=admin
 ```
 
-### 3. 一键启动 (推荐使用 Docker)
-确保你的机器上已安装 Docker 和 Docker-Compose 工具。
+### 2. 启动服务集
+
+返回仓库根目录，只需一条命令即可构建并拉起全家桶容器：
 
 ```bash
 docker-compose up -d --build
 ```
-启动成功后，应用将运行在 `8000` 端口。
 
-### 4. 访问测试
-* **API 接口文档 (Swagger UI)**: [http://localhost:8000/docs](http://localhost:8000/docs)
-* **系统健康检查**: [http://localhost:8000/health](http://localhost:8000/health)
-* **实时直播间演示**: 直接双击打开项目根目录下的 `test_ws.html` 即可在浏览器中体验。可以多开几个浏览器窗口，模拟多个观众同时在同一房间发弹幕哦！
-
----
-
-## 💻 本地开发 (非 Docker 环境)
-
-如果你希望在本地直接运行代码以方便断点调试：
-
-1. **环境准备**: 确保已安装 Python 3.12+，且本地有正在运行的 MongoDB（27017 端口）。
-2. **构建虚拟环境并安装依赖**:
-   ```bash
-   python -m venv .venv
-   # Mac/Linux:
-   source .venv/bin/activate  
-   # Windows:
-   .venv\Scripts\activate
-   
-   pip install -r requirements.txt
-   ```
-3. **启动 FastAPI 服务**:
-   ```bash
-   ENVIRONMENT=dev uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-   ```
+系统编排完成后：
+- 🌟 前端应用入口：[http://localhost:3000](http://localhost:3000)
+- ⚙️ 后端服务接口：[http://localhost:8000](http://localhost:8000)
+- 📝 Swagger API 文档：[http://localhost:8000/docs](http://localhost:8000/docs)
 
 ---
 
-## 📂 项目结构
+## 🧑‍💻 纯本地非容器化开发指南
+
+如果您希望在宿主机本地（Non-Docker）环境中独立调试代码：
+
+### 启动后端 (Backend)
+前置依赖：Python 3.12+ 并且已启动本地 MongoDB (27017)。
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # Windows 下为: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# 运行 FastAPI 开发服务器
+ENVIRONMENT=dev uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 启动前端 (Frontend)
+前置依赖：Node.js 20+ 以及 pnpm。
+```bash
+cd frontend
+pnpm install
+
+# 运行 Vite 开发服务器
+pnpm run dev
+```
+
+---
+
+## 📂 项目模块结构摘要
 
 ```text
-├── app/
-│   ├── api/         # REST API 接口与 WebSocket 路由核心
-│   ├── core/        # 全局配置, 日志系统与角色管理中心 (PersonaManager)
-│   ├── db/          # MongoDB 异步连接池与对话持久化仓库
-│   ├── llm/         # 纯粹的 Gemini 客户端与对话逻辑封装
-│   ├── rag/         # 文档加载器、文本分段器与 FAISS 向量知识库
-│   ├── schemas/     # 强类型数据校验模型 (Pydantic DTO)
-│   ├── services/    # 核心业务逻辑架构 (LiveSystem, LiveRoom, BotContext)
-│   └── tts/         # Edge-TTS 异步语音流合成引擎
-├── data/            # 存放多角色实体 (Persona Bundle) 的核心资源层
-│   └── personas/
-│       ├── bot_star/             # 预置主播: 星瞳 
-│       │   ├── config.yaml       # => 人设、合成音色、知识切片参数配置
-│       │   └── knowledge/        # => 存放该角色专属的文本库
-│       └── bot_tech/             # 预置主播: 极客老王
-│           ├── config.yaml
-│           └── knowledge/
-├── tests/           # 42个纯净单元测试实例 (Pytest 测试集)
-├── .env.example     # 环境变量示例与说明模板（团队可见）
-├── docker-compose.yml 
-├── Dockerfile
-└── pyproject.toml
+ai-streamer-demo/
+├── docker-compose.yml        # 全局服务编排
+├── Makefile / scripts        # (可选) 全局指令定义库
+│
+├── frontend/                 # 🚀 客户端视角模块
+│   ├── src/
+│   │   ├── hooks/            # 核心如 useWebSocket, useAudioQueue
+│   │   ├── stores/           # Zustand 状态
+│   │   ├── components/       # 原子 UI 层
+│   │   └── App.tsx           # 高阶视图容器
+│   ├── Dockerfile
+│   └── package.json
+│
+└── backend/                  # ⚙️ 核心大脑模块
+    ├── app/
+    │   ├── api/              # HTTP/WS 路由控制器
+    │   ├── llm/              # GenAI 调用集成
+    │   ├── rag/              # FAISS 向量检索系统
+    │   └── tts/              # Edge-TTS 音频流直出引擎
+    ├── data/
+    │   └── personas/         # 各主播人设元数据与私有本地语料库
+    ├── tests/                 
+    ├── Dockerfile          
+    └── requirements.txt
 ```
 
 ## ⚠️ 免责声明
 
-本项目仅用于 AI 技术演示与学习交流，请勿用于任何非法商业用途。在接入模型前，请确保你拥有合法的 Google API 访问网络权限，并遵守相关的服务限制条款。
+本项目仅用于 AI 技术演示与全栈架构参考设计，请勿将演示 Token 或项目本体直接用于商业量产环境。在接入模型前，请确保您拥有访问 Google AI 服务的合法网络线路权限，并遵守其区域运营相关使用条款。
